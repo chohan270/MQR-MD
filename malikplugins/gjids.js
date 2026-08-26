@@ -15,11 +15,11 @@ module.exports = {
             const groupChats = Object.values(allGroupsObj); // convert object to array
 
             if (groupChats.length === 0) {
-                return await malik_sock.sendMessage(malik_sender, { text: 'You are not a member of any groups.' });
+                return await malik_sock.sendMessage(malik_sender, { text: '╭─ 🧰 *GROUP DIRECTORY* ─╮\n│ ℹ️ No groups found.\n╰────────────────────╯' });
             }
 
             // Build the message
-            let msg = 'Your groups and their JIDs:\n\n';
+            let msg = '╭─ 🧰 *GROUP DIRECTORY* ─╮\n│ 📚 Your groups and JIDs\n╰────────────────────╯\n\n';
             groupChats.forEach((group, index) => {
                 msg += `${index + 1}. ${group.subject} — ${group.id}\n`;
             });
@@ -28,7 +28,7 @@ module.exports = {
             await malik_sock.sendMessage(malik_sender, { text: msg });
         } catch (error) {
             console.error(error);
-            await malik_sock.sendMessage(malik_sender, { text: 'Error fetching groups.' });
+            await malik_sock.sendMessage(malik_sender, { text: '╭─ 🧰 *GROUP DIRECTORY* ─╮\n│ ❌ Could not fetch groups.\n╰────────────────────╯' });
         }
     }
 };

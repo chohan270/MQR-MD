@@ -15,7 +15,7 @@ module.exports = {
         // 1. Get Quoted Message
         let quoted = malik_msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) {
-            return await malik_sock.sendMessage(malik_sender, { text: '❌ Please reply to a message you want to forward.' });
+            return await malik_sock.sendMessage(malik_sender, { text: '╭─ 📤 *FORWARD DESK* ─╮\n│ ❌ Reply to a message first.\n╰──────────────────╯' });
         }
 
         // 1b. Robust Unwrap & Clean (Handle View Once & regex replacement)
@@ -31,15 +31,17 @@ module.exports = {
         // 2. Parse Targets
         const inputArgs = malik_args.join(' ');
         if (!inputArgs) {
-            const usage = `❌ *Invalid Usage*\n\n` +
+            const usage = `╭─ 📤 *FORWARD DESK* ─╮\n` +
+                `│ ❌ *Invalid usage*\n\n` +
                 `Provide JIDs separated by commas.\n` +
-                `Example: \`.f 123@s.whatsapp.net, 456@g.us, 120363@newsletter\``;
+                `Example: \.f 123@s.whatsapp.net, 456@g.us, 120363@newsletter\`\n` +
+                `╰──────────────────╯`;
             return await malik_sock.sendMessage(malik_sender, { text: usage });
         }
 
         const targetJids = inputArgs.split(',').map(j => j.trim()).filter(j => j.length > 0);
         if (targetJids.length === 0) {
-            return await malik_sock.sendMessage(malik_sender, { text: '❌ No valid JIDs found.' });
+            return await malik_sock.sendMessage(malik_sender, { text: '╭─ 📤 *FORWARD DESK* ─╮\n│ ❌ No valid JIDs found.\n╰──────────────────╯' });
         }
 
         // 3. Prepare the Forward (No Labels as per user request)
@@ -82,10 +84,12 @@ module.exports = {
 
         // 5. Final Report (صرف فیل ہونے پر)
         if (failCount > 0) {
-            let report = `⚠️ *کچھ JIDs پر بھیجنا ناکام رہا*\n\n`;
+            let report = `╭─ 📤 *FORWARD REPORT* ─╮\n`;
+            report += `│ ⚠️ کچھ JIDs پر بھیجنا ناکام رہا\n\n`;
             report += `❌ *Failed:* ${failCount}\n`;
             report += `✨ *Mode:* Native Relay`;
             report += `\n\n*Failed List:*\n${failedJids.map(j => `> ${j}`).join('\n')}`;
+            report += `\n╰────────────────────╯`;
 
             await malik_sock.sendMessage(malik_sender, { text: report });
         }

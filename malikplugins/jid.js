@@ -8,6 +8,6 @@ module.exports = {
     category: 'Debug',
     desc: 'Get the JID of the current chat',
     malik_handler: async (malik_sock, malik_sender) => {
-        await malik_sock.sendMessage(malik_sender, { text: `${malik_sender}` });
+        await malik_sock.sendMessage(malik_sender, { text: `╭─ 🧪 *CHAT IDENTIFIER* ─╮\n│ 🔗 ${malik_sender}\n╰──────────────────────╯` });
     }
 };
