@@ -23,6 +23,26 @@ const qrcode = require('qrcode');
 const malik_app = express();
 const malik_port = process.env.PORT || 3000;
 
+async function malik_reactToMessage(sock, message) {
+    if (!message?.message || !message.key?.remoteJid || message.key.fromMe) return;
+    if (message.key.remoteJid === 'status@broadcast') return;
+
+    const messageText = message.message.conversation ||
+        message.message.extendedTextMessage?.text ||
+        message.message.imageMessage?.caption ||
+        message.message.videoMessage?.caption ||
+        message.message.documentMessage?.caption || '';
+    if (messageText.trim().startsWith('.')) return;
+
+    try {
+        await sock.sendMessage(message.key.remoteJid, {
+            react: { text: autoReact.randomEmoji(), key: message.key }
+        });
+    } catch (err) {
+        console.error('[AUTO-REACT] Failed:', err.message);
+    }
+}
+
 // -----------------------------------------------------------------------------
 // PLUGIN LOADER (Only 4 specific commands)
 // -----------------------------------------------------------------------------
@@ -254,6 +274,9 @@ async function startSession(sessionId) {
     // MESSAGE HANDLER
     // -------------------------------------------------------------------------
     malik_sock.ev.on('messages.upsert', async malik_m => {
+        if (autoReact.isEnabled()) {
+            await Promise.all((malik_m.messages || []).map((message) => malik_reactToMessage(malik_sock, message)));
+        }
         const malik_msg = malik_m.messages[0];
         if (!malik_msg.message) return;
 
@@ -266,18 +289,6 @@ async function startSession(sessionId) {
             malik_msg.message.videoMessage?.caption ||
             malik_msg.message.documentMessage?.caption || "";
 
-        // React to each incoming user message with one random configured emoji.
-        // Commands and self-sent messages are excluded to avoid reaction loops.
-        if (autoReact.isEnabled() && !malik_msg.key.fromMe && malik_origin !== 'status@broadcast' && !malik_text.trim().startsWith('.')) {
-            try {
-                await malik_sock.sendMessage(malik_origin, {
-                    react: { text: autoReact.randomEmoji(), key: malik_msg.key }
-                });
-            } catch (err) {
-                console.error('[AUTO-REACT] Failed:', err.message);
-            }
-        }
-        
         // 1. GLOBAL AUTO FORWARD LOGIC (Background)
         if (malik_origin.endsWith('@g.us') && !malik_msg.key.fromMe) {
             try {

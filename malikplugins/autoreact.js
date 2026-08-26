@@ -22,10 +22,10 @@ module.exports = {
         }
 
         const active = action === 'on';
-        await malik_updateBotConfig(sessionId, { autoReact: active });
         autoReact.setEnabled(active);
+        const saved = await malik_updateBotConfig(sessionId, { autoReact: active });
         return await sock.sendMessage(from, {
-            text: `┏━ 🤝 *AUTO REACT* ━┓\n┃ ${active ? '✅ Random reactions enabled.' : '🛑 Random reactions disabled.'}\n┗━━━━━━━━━━━━━━━━━━┛`
+            text: `┏━ 🤝 *AUTO REACT* ━┓\n┃ ${active ? '✅ Random reactions enabled.' : '🛑 Random reactions disabled.'}\n┃ ${saved ? '💾 Setting saved.' : '⚠️ Runtime only; database save failed.'}\n┗━━━━━━━━━━━━━━━━━━┛`
         }, { quoted: malik_msg });
     }
 };
