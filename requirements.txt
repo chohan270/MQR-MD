@@ -1,0 +1,6 @@
+requests
+pillow
+pypdf
+curl_cffi
+img2pdf
+beautifulsoup4
