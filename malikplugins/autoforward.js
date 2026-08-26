@@ -21,6 +21,10 @@ function parseJids(input) {
     return [...new Set(jids)];
 }
 
+function commandPanel(title, lines) {
+    return `╭─ 🔄 *${title}* ─╮\n${lines.map((line) => `│ ${line}`).join('\n')}\n╰────────────────────╯`;
+}
+
 module.exports = {
     name: 'autoforward',
     description: 'Auto-forward messages from source groups to targets — works even without admin',
@@ -37,26 +41,26 @@ module.exports = {
         // ─────────────────────────────────────────────────────────────────────
         if (action === 'set' && (sub === 'source_jids' || sub === 'target_jids')) {
             if (!malik_isOwner) {
-                return await sock.sendMessage(from, { text: '❌ Only the bot owner can set global auto-forward JIDs.' }, { quoted: malik_msg });
+                return await sock.sendMessage(from, { text: commandPanel('GLOBAL FORWARD', ['❌ Owner access required.']) }, { quoted: malik_msg });
             }
 
             const raw = malik_args.slice(2).join(' ');
             if (!raw) {
                 return await sock.sendMessage(from, {
-                    text: `❌ Provide JIDs.\nExample:\n.af set ${sub} 12345@g.us, 67890@g.us`
+                    text: commandPanel('GLOBAL FORWARD', [`❌ Provide JIDs.`, `Example: .af set ${sub} 12345@g.us, 67890@g.us`])
                 }, { quoted: malik_msg });
             }
 
             const jids = parseJids(raw);
             if (!jids.length) {
-                return await sock.sendMessage(from, { text: '❌ No valid JIDs found.' }, { quoted: malik_msg });
+                return await sock.sendMessage(from, { text: commandPanel('GLOBAL FORWARD', ['❌ No valid JIDs found.']) }, { quoted: malik_msg });
             }
 
             const field = sub === 'source_jids' ? 'sourceJids' : 'targetJids';
             await malik_updateGlobalAutoForward(sessionId, { [field]: jids });
 
             return await sock.sendMessage(from, {
-                text: `✅ *Global AutoForward — ${sub} updated*\n\n${jids.map((j, i) => `${i + 1}. ${j}`).join('\n')}`
+                text: commandPanel('GLOBAL FORWARD', [`✅ ${sub} updated`, '', ...jids.map((j, i) => `${i + 1}. ${j}`)])
             }, { quoted: malik_msg });
         }
 
@@ -65,29 +69,29 @@ module.exports = {
         // ─────────────────────────────────────────────────────────────────────
         if (action === 'epaper') {
             if (!malik_isOwner) {
-                return await sock.sendMessage(from, { text: '❌ Only the bot owner can manage the epaper system.' }, { quoted: malik_msg });
+                return await sock.sendMessage(from, { text: commandPanel('EPAPER CONTROL', ['❌ Owner access required.']) }, { quoted: malik_msg });
             }
 
             if (sub === 'set') {
                 const raw = malik_args.slice(2).join(' ');
                 if (!raw) {
                     return await sock.sendMessage(from, {
-                        text: '❌ Provide target group JIDs.\nExample:\n`.af epaper set 12345@g.us, 67890@g.us`'
+                        text: commandPanel('EPAPER CONTROL', ['❌ Provide target group JIDs.', 'Example: .af epaper set 12345@g.us, 67890@g.us'])
                     }, { quoted: malik_msg });
                 }
                 const jids = parseJids(raw);
                 if (!jids.length) {
-                    return await sock.sendMessage(from, { text: '❌ No valid JIDs found.' }, { quoted: malik_msg });
+                    return await sock.sendMessage(from, { text: commandPanel('EPAPER CONTROL', ['❌ No valid JIDs found.']) }, { quoted: malik_msg });
                 }
                 await malik_updateEpaperConfig(sessionId, { targetJids: jids });
                 return await sock.sendMessage(from, {
-                    text: `✅ *Epaper target groups updated* (${jids.length})\n\n${jids.map((j, i) => `${i + 1}. ${j}`).join('\n')}`
+                    text: commandPanel('EPAPER CONTROL', [`✅ Target groups updated (${jids.length})`, ...jids.map((j, i) => `${i + 1}. ${j}`)])
                 }, { quoted: malik_msg });
             }
 
             if (sub === 'on' || sub === 'off') {
                 await malik_updateEpaperConfig(sessionId, { enabled: sub === 'on' });
-                return await sock.sendMessage(from, { text: `✅ Epaper auto-system *${sub.toUpperCase()}*.` }, { quoted: malik_msg });
+                return await sock.sendMessage(from, { text: commandPanel('EPAPER CONTROL', [`✅ Auto-system ${sub.toUpperCase()}.`]) }, { quoted: malik_msg });
             }
 
             if (sub === 'run') {
@@ -148,15 +152,15 @@ module.exports = {
             if (sub === 'on' || sub === 'off') {
                 await malik_updateGlobalAutoForward(sessionId, { enabled: sub === 'on' });
                 return await sock.sendMessage(from, {
-                    text: `✅ Global Auto-Forward *${sub.toUpperCase()}*.`
+                    text: commandPanel('GLOBAL FORWARD', [`✅ Auto-forward ${sub.toUpperCase()}.`])
                 }, { quoted: malik_msg });
             }
 
             if (sub === 'timestamp') {
                 const state = malik_args[2]?.toLowerCase();
-                if (state !== 'on' && state !== 'off') return await sock.sendMessage(from, { text: '❌ Usage: `.af global timestamp on/off`' }, { quoted: malik_msg });
+                if (state !== 'on' && state !== 'off') return await sock.sendMessage(from, { text: commandPanel('GLOBAL FORWARD', ['❌ Usage: .af global timestamp on/off']) }, { quoted: malik_msg });
                 await malik_updateGlobalAutoForward(sessionId, { autoForwardTimestamp: state === 'on' });
-                return await sock.sendMessage(from, { text: `✅ Global Timestamp *${state.toUpperCase()}*.` }, { quoted: malik_msg });
+                return await sock.sendMessage(from, { text: commandPanel('GLOBAL FORWARD', [`✅ Timestamp ${state.toUpperCase()}.`]) }, { quoted: malik_msg });
             }
 
             // Show global status
@@ -166,17 +170,16 @@ module.exports = {
             const srcs = gcfg?.sourceJids?.length ? gcfg.sourceJids.join('\n  ') : 'None';
             const tgts = gcfg?.targetJids?.length ? gcfg.targetJids.join('\n  ') : 'None';
 
-            let text = `📡 *GLOBAL AUTO-FORWARD*\n\n`;
-            text += `*Status:* ${status}\n`;
-            text += `*Timestamp:* ${tsStatus}\n\n`;
-            text += `*Source JIDs* (listen from):\n  ${srcs}\n\n`;
-            text += `*Target JIDs* (forward to):\n  ${tgts}\n\n`;
-            text += `*Commands:*\n`;
-            text += `• \`.af global on/off\` — toggle\n`;
-            text += `• \`.af global timestamp on/off\` — toggle time\n`;
-            text += `• \`.af set source_jids jid1, jid2\` — set sources\n`;
-            text += `• \`.af set target_jids jid1, jid2\` — set targets\n\n`;
-            text += `> _This feature works even if the bot is NOT admin in the source group._`;
+            const text = commandPanel('GLOBAL FORWARD', [
+                `📡 Status: ${status}`,
+                `🕒 Timestamp: ${tsStatus}`,
+                '',
+                `📥 Sources: ${srcs}`,
+                `📤 Targets: ${tgts}`,
+                '',
+                'Commands: .af global on/off | .af global timestamp on/off',
+                'Owner only: .af set source_jids / target_jids'
+            ]);
 
             return await sock.sendMessage(from, { text }, { quoted: malik_msg });
         }
@@ -188,24 +191,18 @@ module.exports = {
             const globalCfg = await malik_getGlobalAutoForward(sessionId);
             const gStatus = globalCfg?.enabled ? '🟢 ON' : '🔴 OFF';
 
-            let text = `🔄 *AUTO-FORWARD MANAGER*\n\n`;
-            text += `📡 *Global Mode:* ${gStatus}\n`;
+            let text = commandPanel('FORWARD MANAGER', [`📡 Global mode: ${gStatus}`]);
 
             if (malik_isGroup) {
                 const current = await malik_getGroupSettings(sessionId, from) || {};
                 const pStatus = current.autoForward ? '🟢 ON' : '🔴 OFF';
                 const targets = current.autoForwardTargets || [];
 
-                text += `\n📌 *This Group:* ${pStatus}\n`;
-                text += `🎯 *Targets:* ${targets.length ? targets.join(', ') : 'None'}\n`;
+                text += `\n📌 This group: ${pStatus}\n`;
+                text += `🎯 Targets: ${targets.length ? targets.join(', ') : 'None'}\n`;
             }
 
-            text += `\n*── COMMON COMMANDS ──*\n`;
-            text += `• \`.af on / off\` — Toggle this group\n`;
-            text += `• \`.af set jid1, jid2\` — Set targets\n\n`;
-            text += `*── ADVANCED OWNER ──*\n`;
-            text += `• \`.af global\` — Global settings\n`;
-            text += `• \`.af epaper\` — Epaper auto-download system\n`;
+            text += `\n🧭 Commands\n│ .af on/off • .af set jid1, jid2\n│ Owner: .af global • .af epaper\n╰────────────────────╯`;
 
             return await sock.sendMessage(from, { text }, { quoted: malik_msg });
         }
