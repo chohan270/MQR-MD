@@ -71,7 +71,6 @@ const malik_botConfigSchema = new mongoose.Schema({
     sudo: { type: [String], default: [] }, // Array of Sudo JIDs
     autoStatusSeen: { type: Boolean, default: true },
     autoStatusReact: { type: Boolean, default: true },
-    autoReact: { type: Boolean, default: false },
     autoStatusSave: { type: Boolean, default: false },
     autoStatusEmojis: { type: [String], default: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🌈', '🔥'] }
 });

@@ -21,7 +21,6 @@ A streamlined, stable, and high-performance WhatsApp bot focused on **Auto-Forwa
 | `.f` | `.forward` | Manually forward a replied message to multiple JIDs. |
 | `.gjids` | | List all your group names and their unique JIDs. |
 | `.jid` | | Get the JID of the current chat. |
-| `.autoreact on/off` | `.ar` | Enable or disable random emoji reactions on incoming messages. |
 
 ---
 
