@@ -92,7 +92,7 @@ heroku buildpacks:add heroku-community/apt -a qasimraza
 heroku buildpacks:add heroku/python -a qasimraza
 heroku buildpacks:add heroku/nodejs -a qasimraza
 ```
-> Order zaroori hai: pehle **apt** (system packages: ffmpeg, git),
+> Order zaroori hai: pehle **apt** (system package: git),
 > phir **python** (requirements.txt: pypdf, pillow, requests, curl_cffi),
 > phir **nodejs** (package.json: node-cron, fs-extra waghera).
 > Sab kuch build ke waqt khud install ho jayega — kuch bhi manually

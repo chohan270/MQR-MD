@@ -16,7 +16,6 @@ const path = require('path');
 const { malik_connectSession, malik_clearSession, malik_requestPairingCode } = require('./maliklib/session');
 const { malik_connectDatabase, malik_getGroupSettings, malik_isDbConnected, malik_getGlobalAutoForward, malik_updateGlobalAutoForward } = require('./maliklib/database');
 const epaperEngine = require('./maliklib/epaperEngine');
-const newsEngine = require('./maliklib/newsEngine');
 const config = require('./malik');
 const qrcode = require('qrcode');
 
@@ -33,7 +32,7 @@ function malik_loadPlugins() {
     if (!fs.existsSync(pluginDir)) return;
 
     // We only want these specific filenames/commands as per user request
-    const requested = ['autoforward.js', 'forward.js', 'gjids.js', 'jid.js', 'uptime.js', 'ping.js', 'menu.js', 'news.js', 'setprimarygroup.js'];
+    const requested = ['autoforward.js', 'forward.js', 'gjids.js', 'jid.js', 'uptime.js', 'ping.js', 'menu.js'];
     
     for (const file of requested) {
         const filePath = path.join(pluginDir, file);
@@ -244,12 +243,6 @@ async function startSession(sessionId) {
                 epaperEngine.updateSocket(malik_sock);
             } catch (e) {
                 console.error('[epaper] init error:', e.message);
-            }
-            try {
-                newsEngine.init(malik_sock, sessionId);
-                newsEngine.updateSocket(malik_sock);
-            } catch (e) {
-                console.error('[news] init error:', e.message);
             }
         }
     });

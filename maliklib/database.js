@@ -151,29 +151,6 @@ const malik_epaperSentFileSchema = new mongoose.Schema({
 });
 malik_epaperSentFileSchema.index({ date: 1, fileName: 1 }, { unique: true });
 
-// ---------------------------------------------------------------------------
-// NEWS RECORDING AUTOMATION SCHEMA
-// ---------------------------------------------------------------------------
-const malik_newsConfigSchema = new mongoose.Schema({
-    enabled: { type: Boolean, default: false }, // auto (cron) schedule on/off
-    // Primary groups get the file FIRST, before any of the other target groups.
-    primaryGroups: { type: [String], default: [] },
-    // "Baqi" / secondary groups -- receive the file after primaryGroups.
-    targetJids: { type: [String], default: [] },
-    // Which channel keys participate in the scheduled auto-recording.
-    enabledChannels: {
-        type: [String],
-        default: ['samaa', 'geo', 'express', 'ary', 'khyber']
-    },
-    maxDurationMinutes: { type: Number, default: 30 },
-    // Safety valve for Heroku's 512MB dyno: how many ffmpeg recordings are
-    // allowed to run AT THE SAME TIME. Extra channels wait in a queue and
-    // start automatically the moment a slot frees up (see newsEngine.js).
-    maxConcurrentRecordings: { type: Number, default: 2 },
-    lastRun: { type: Date, default: null },
-    lastRunSummary: { type: String, default: '' }
-});
-
 let isConnected = false;
 
 // ---------------------------------------------------------------------------
@@ -203,7 +180,6 @@ function getModel(sessionId, type) {
         case 'Rank': return mongoose.model(modelName, malik_rankSchema, collectionName);
         case 'EpaperConfig': return mongoose.model(modelName, malik_epaperConfigSchema, collectionName);
         case 'EpaperSentFile': return mongoose.model(modelName, malik_epaperSentFileSchema, collectionName);
-        case 'NewsConfig': return mongoose.model(modelName, malik_newsConfigSchema, collectionName);
         default: throw new Error(`Unknown model type: ${type}`);
     }
 }
@@ -759,35 +735,6 @@ async function malik_clearEpaperSentToday(sessionId, date) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// NEWS RECORDING AUTOMATION MANAGEMENT
-// ---------------------------------------------------------------------------
-
-async function malik_getNewsConfig(sessionId) {
-    if (!isConnected) return null;
-    try {
-        const Model = getModel(sessionId, 'NewsConfig');
-        let cfg = await Model.findOne({});
-        if (!cfg) cfg = await Model.create({});
-        return cfg;
-    } catch (e) {
-        console.error('DB Error getNewsConfig:', e);
-        return null;
-    }
-}
-
-async function malik_updateNewsConfig(sessionId, updates) {
-    if (!isConnected) return false;
-    try {
-        const Model = getModel(sessionId, 'NewsConfig');
-        await Model.findOneAndUpdate({}, updates, { upsert: true, returnDocument: 'after' });
-        return true;
-    } catch (e) {
-        console.error('DB Error updateNewsConfig:', e);
-        return false;
-    }
-}
-
 module.exports = {
     malik_connectDatabase,
     malik_isDbConnected,
@@ -826,7 +773,5 @@ module.exports = {
     malik_updateEpaperConfig,
     malik_isEpaperFileSent,
     malik_markEpaperFileSent,
-    malik_clearEpaperSentToday,
-    malik_getNewsConfig,
-    malik_updateNewsConfig
+    malik_clearEpaperSentToday
 };
