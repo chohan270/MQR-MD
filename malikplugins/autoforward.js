@@ -22,7 +22,7 @@ function parseJids(input) {
 }
 
 function commandPanel(title, lines) {
-    return `╭─ 🔄 *${title}* ─╮\n${lines.map((line) => `│ ${line}`).join('\n')}\n╰────────────────────╯`;
+    return `┏━ 🔄 *${title}* ━┓\n${lines.map((line) => `┃ ${line}`).join('\n')}\n┗━━━━━━━━━━━━━━━━━━━━┛`;
 }
 
 module.exports = {
@@ -202,7 +202,7 @@ module.exports = {
                 text += `🎯 Targets: ${targets.length ? targets.join(', ') : 'None'}\n`;
             }
 
-            text += `\n🧭 Commands\n│ .af on/off • .af set jid1, jid2\n│ Owner: .af global • .af epaper\n╰────────────────────╯`;
+            text += `\n🧭 Commands\n┃ .af on/off • .af set jid1, jid2\n┃ Owner: .af global • .af epaper\n┗━━━━━━━━━━━━━━━━━━━━┛`;
 
             return await sock.sendMessage(from, { text }, { quoted: malik_msg });
         }

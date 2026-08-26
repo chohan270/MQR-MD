@@ -19,10 +19,10 @@ module.exports = {
         // 2. Incoming Latency (Optional, depends on sync'd clock)
         const incomingLatency = Math.max(0, Date.now() - (malik_msg.messageTimestamp * 1000));
         
-        let report = `╭─ 🏓 *PULSE CHECK* ─╮\n`;
-        report += `│ ⚡ Response: *${responseTime}ms*\n`;
-        report += `│ 📡 Server latency: *${incomingLatency}ms*\n`;
-        report += `╰──────────────────╯`;
+        let report = `┏━ 🏓 *PULSE CHECK* ━┓\n`;
+        report += `┃ ⚡ Response: *${responseTime}ms*\n`;
+        report += `┃ 📡 Server latency: *${incomingLatency}ms*\n`;
+        report += `┗━━━━━━━━━━━━━━━━━━┛`;
 
         // Update the message
         await malik_sock.sendMessage(malik_origin, { 

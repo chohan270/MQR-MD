@@ -28,18 +28,18 @@ module.exports = {
             categories[category].push(plugin);
         }
 
-        let menuText = `╭━━━〔 *MALIK COMMAND DECK* 〕━━━╮\n`;
+        let menuText = `┏━━━〔 *MALIK COMMAND DECK* 〕━━━┓\n`;
         menuText += `┃ 👤 @${malik_sender.split('@')[0]}\n`;
         menuText += `┃ ⚙️ Prefix: .  •  ${handledCommands.size} commands\n`;
-        menuText += `╰━━━━━━━━━━━━━━━━━━━━━━╯\n\n`;
+        menuText += `┗━━━━━━━━━━━━━━━━━━━━━━┛\n\n`;
         
         for (const category in categories) {
             const icon = categoryIcons[category] || categoryIcons.General;
-            menuText += `╭─ ${icon} *${category.toUpperCase()}* ─╮\n`;
+            menuText += `╞══ ${icon} *${category.toUpperCase()}* ══╡\n`;
             categories[category].forEach(cmd => {
-                menuText += `│  ${icon}  .${cmd.name}\n`;
+                menuText += `┃  ${icon}  .${cmd.name}\n`;
             });
-            menuText += `╰──────────────────╯\n\n`;
+            menuText += `╘══════════════════╛\n\n`;
         }
         
         menuText += `> _Crafted for smooth forwarding • Malik MD_`;
