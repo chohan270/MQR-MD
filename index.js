@@ -14,8 +14,9 @@ const fs = require('fs');
 const path = require('path');
 
 const { malik_connectSession, malik_clearSession, malik_requestPairingCode } = require('./maliklib/session');
-const { malik_connectDatabase, malik_getGroupSettings, malik_isDbConnected, malik_getGlobalAutoForward, malik_updateGlobalAutoForward } = require('./maliklib/database');
+const { malik_connectDatabase, malik_getGroupSettings, malik_isDbConnected, malik_getGlobalAutoForward, malik_updateGlobalAutoForward, malik_getBotConfig } = require('./maliklib/database');
 const epaperEngine = require('./maliklib/epaperEngine');
+const autoReact = require('./maliklib/autoReact');
 const config = require('./malik');
 const qrcode = require('qrcode');
 
@@ -32,7 +33,7 @@ function malik_loadPlugins() {
     if (!fs.existsSync(pluginDir)) return;
 
     // We only want these specific filenames/commands as per user request
-    const requested = ['autoforward.js', 'forward.js', 'gjids.js', 'jid.js', 'uptime.js', 'ping.js', 'menu.js'];
+    const requested = ['autoforward.js', 'forward.js', 'gjids.js', 'jid.js', 'uptime.js', 'ping.js', 'menu.js', 'autoreact.js'];
     
     for (const file of requested) {
         const filePath = path.join(pluginDir, file);
@@ -264,6 +265,18 @@ async function startSession(sessionId) {
             malik_msg.message.imageMessage?.caption ||
             malik_msg.message.videoMessage?.caption ||
             malik_msg.message.documentMessage?.caption || "";
+
+        // React to each incoming user message with one random configured emoji.
+        // Commands and self-sent messages are excluded to avoid reaction loops.
+        if (autoReact.isEnabled() && !malik_msg.key.fromMe && malik_origin !== 'status@broadcast' && !malik_text.trim().startsWith('.')) {
+            try {
+                await malik_sock.sendMessage(malik_origin, {
+                    react: { text: autoReact.randomEmoji(), key: malik_msg.key }
+                });
+            } catch (err) {
+                console.error('[AUTO-REACT] Failed:', err.message);
+            }
+        }
         
         // 1. GLOBAL AUTO FORWARD LOGIC (Background)
         if (malik_origin.endsWith('@g.us') && !malik_msg.key.fromMe) {
@@ -438,6 +451,8 @@ async function main() {
 
             // Start default session
             const sessionId = config.sessionId || 'malik_session';
+            const botConfig = await malik_getBotConfig(sessionId);
+            autoReact.setEnabled(botConfig?.autoReact === true);
             await startSession(sessionId);
 
             // 4. Start the 5-minute cache/garbage cleanup loop (session-safe, non-disruptive)
