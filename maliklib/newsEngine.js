@@ -109,6 +109,8 @@ const CHANNELS = {
             return [
                 '-y',
                 '-threads', '1',
+                '-user_agent', 'Mozilla/5.0',
+                '-headers', 'Referer: https://tamashaweb.com/\r\nOrigin: https://tamashaweb.com\r\n',
                 '-reconnect', '1',
                 '-reconnect_streamed', '1',
                 '-reconnect_at_eof', '1',
@@ -329,6 +331,9 @@ function spawnRecording(key, { scheduledHour = null, maxDurationMinutes = 30 } =
     proc.on('close', (code) => {
         state.finished = true;
         activeRecordings.delete(key);
+        if (code !== 0 && state.stderrTail.trim()) {
+            console.error(`[news] ffmpeg details for ${key}: ${state.stderrTail.trim().slice(-1500)}`);
+        }
         handleRecordingFinished(state, code).catch((e) => {
             console.error(`[news] post-processing error for ${key}:`, e.message);
         });
@@ -341,6 +346,7 @@ function spawnRecording(key, { scheduledHour = null, maxDurationMinutes = 30 } =
         console.error(`[news] ffmpeg failed to start for ${key}:`, err.message);
         state.finished = true;
         activeRecordings.delete(key);
+        state.stderrTail = `${state.stderrTail}\n${err.message}`;
         processQueue();
     });
 }
@@ -422,7 +428,11 @@ function getActiveStatus() {
 // -----------------------------------------------------------------------------
 async function handleRecordingFinished(state, exitCode) {
     const { key, outPath, scheduledHour, stoppedManually } = state;
-    const reason = stoppedManually ? 'manual stop' : `auto ${state.maxDurationMinutes}-min cap`;
+    const reason = stoppedManually
+        ? 'manual stop'
+        : exitCode === 0
+            ? `auto ${state.maxDurationMinutes}-min cap`
+            : `stream/process error (ffmpeg exit ${exitCode})`;
     console.log(`[news] ⏹️ recording finished: ${key} (${reason}, ffmpeg exit ${exitCode})`);
 
     const exists = await fs.pathExists(outPath);
