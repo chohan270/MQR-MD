@@ -55,6 +55,7 @@ const {
 
 const ASSETS_DIR = path.join(__dirname, '..', 'scripts', 'assets', 'news');
 const WORKDIR = '/tmp/news_work';
+const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
 const TZ_OPTS = { timezone: 'Asia/Karachi' };
 
 fs.ensureDirSync(WORKDIR);
@@ -306,7 +307,7 @@ function spawnRecording(key, { scheduledHour = null, maxDurationMinutes = 30 } =
     const args = ch.buildArgs(ch.url, watermarkPath, outPath, durationSec);
 
     console.log(`[news] ▶️ starting recording: ${key} -> ${outPath} (max ${maxDurationMinutes} min) [active: ${activeRecordings.size + 1}/${cachedMaxConcurrent}, queued: ${pendingQueue.length}]`);
-    const proc = spawn('ffmpeg', args, { cwd: ASSETS_DIR });
+    const proc = spawn(FFMPEG_PATH, args, { cwd: ASSETS_DIR });
 
     const state = {
         key,

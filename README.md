@@ -45,6 +45,21 @@ npm install
 npm start
 ```
 
+### News recording on Heroku
+
+The news recorder requires the `ffmpeg` executable at runtime. For buildpack
+deployments, keep `ffmpeg` in `Aptfile` and ensure the Heroku app has the
+`heroku-community/apt` buildpack configured. Verify the deployed dyno with:
+
+```bash
+heroku buildpacks --app YOUR_APP_NAME
+heroku run --app YOUR_APP_NAME "command -v ffmpeg && ffmpeg -version"
+```
+
+For Docker deployments, the included `Dockerfile` installs ffmpeg. Rebuild and
+redeploy the image after pulling this change. `FFMPEG_PATH` may be set when the
+binary is installed at a non-standard path.
+
 ---
 
 ## ⚙️ **ENVIRONMENT VARIABLES**
