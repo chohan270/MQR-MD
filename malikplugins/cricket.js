@@ -10,6 +10,15 @@ const {
 const service = path.join(__dirname, '..', 'scripts', 'cricket_service.py');
 const trackers = new Map();
 const updateMessages = new Map();
+const localConfigs = new Map();
+const DEFAULT_CONFIG = {
+    matchId: '',
+    streamUrl: '',
+    updateEnabled: false,
+    targetJids: [],
+    footer: '© Powered By Qasim Cricket Bot - 03434571953',
+    footerEnabled: true
+};
 
 function panel(title, lines) {
     return `┏━ 🏏 *${title}* ━┓\n${lines.map(line => `┃ ${line}`).join('\n')}\n┗━━━━━━━━━━━━━━━━━━┛`;
@@ -44,8 +53,28 @@ async function stopTracker(sessionId) {
 }
 
 async function saveCricketConfig(sessionId, updates) {
-    const saved = await malik_updateCricketConfig(sessionId, updates);
-    return saved;
+    const current = localConfigs.get(sessionId) || { ...DEFAULT_CONFIG };
+    localConfigs.set(sessionId, { ...current, ...updates });
+    malik_updateCricketConfig(sessionId, updates).catch(error => {
+        console.error('[cricket] config persistence error:', error.message);
+    });
+    return true;
+}
+
+async function loadCricketConfig(sessionId) {
+    const local = localConfigs.get(sessionId) || { ...DEFAULT_CONFIG };
+    try {
+        const stored = await Promise.race([
+            malik_getCricketConfig(sessionId),
+            new Promise(resolve => setTimeout(() => resolve(null), 800))
+        ]);
+        const merged = { ...local, ...(stored ? stored.toObject?.() || stored : {}) };
+        localConfigs.set(sessionId, merged);
+        return merged;
+    } catch (error) {
+        console.error('[cricket] config load error:', error.message);
+        return local;
+    }
 }
 
 async function sendClip(sock, targets, filePath, event, from, quoted) {
@@ -87,6 +116,9 @@ async function startTracker(sock, from, context, cfg) {
     tracker.on('close', () => {
         if (trackers.get(context.sessionId) === tracker) trackers.delete(context.sessionId);
     });
+    tracker.on('error', async error => {
+        await sock.sendMessage(from, { text: `❌ Cricket tracker could not start: ${error.message}` }, { quoted: context.malik_msg }).catch(() => {});
+    });
     tracker.stderr.on('data', data => console.error(`[cricket] ${data}`));
 }
 
@@ -94,10 +126,13 @@ async function fetchMatches(sock, from, quoted) {
     const child = pythonProcess(['--live']);
     let output = '';
     child.stdout.on('data', data => { output += data.toString(); });
+    let failed = false;
     child.on('error', async error => {
+        failed = true;
         await sock.sendMessage(from, { text: `❌ Cricket service could not start: ${error.message}` }, { quoted });
     });
     child.on('close', async () => {
+        if (failed) return;
         try {
             const result = JSON.parse(output.trim().split(/\r?\n/).pop());
             const lines = result.matches?.length ? result.matches.map((match, index) => `${index + 1}. ${match.name}\n   ID: ${match.id}`) : ['No live matches found.'];
@@ -119,7 +154,7 @@ module.exports = {
         if (command === 'cricket' && !args.length) {
             return sock.sendMessage(from, { text: panel('CRICKET MENU', ['`.livematches` - list live matches and IDs', '`.setlivematch 138638` - choose match', '`.setstream <m3u8>` - set direct stream', '`.settarget jid1,jid2` - clip destinations', '`.startupdate` / `.stopupdate` - score updates', '`.setfooter text` or `.setfooter off`', '`.cricket ffmpeg` - clip recorder settings']) }, { quoted: context.malik_msg });
         }
-        const config = await malik_getCricketConfig(context.sessionId) || {};
+        const config = await loadCricketConfig(context.sessionId);
         const ownerOnly = ['setlivematch', 'setstream', 'startupdate', 'stopupdate', 'settarget', 'setfooter'];
         // Private-chat commands are the owner's control panel; groups still
         // require a group admin or the configured bot owner.
