@@ -43,6 +43,11 @@ async function stopTracker(sessionId) {
     trackers.delete(sessionId);
 }
 
+async function saveCricketConfig(sessionId, updates) {
+    const saved = await malik_updateCricketConfig(sessionId, updates);
+    return saved;
+}
+
 async function sendClip(sock, targets, filePath, event, from, quoted) {
     if (!filePath || !fs.existsSync(filePath)) return;
     try {
@@ -89,6 +94,9 @@ async function fetchMatches(sock, from, quoted) {
     const child = pythonProcess(['--live']);
     let output = '';
     child.stdout.on('data', data => { output += data.toString(); });
+    child.on('error', async error => {
+        await sock.sendMessage(from, { text: `❌ Cricket service could not start: ${error.message}` }, { quoted });
+    });
     child.on('close', async () => {
         try {
             const result = JSON.parse(output.trim().split(/\r?\n/).pop());
@@ -113,45 +121,47 @@ module.exports = {
         }
         const config = await malik_getCricketConfig(context.sessionId) || {};
         const ownerOnly = ['setlivematch', 'setstream', 'startupdate', 'stopupdate', 'settarget', 'setfooter'];
-        if (ownerOnly.includes(command) && !context.malik_isOwner) {
-            return sock.sendMessage(from, { text: '❌ Owner access required.' }, { quoted: context.malik_msg });
+        const canManage = context.malik_isOwner || context.malik_isAdmin;
+        if (ownerOnly.includes(command) && !canManage) {
+            return sock.sendMessage(from, { text: context.malik_isGroup ? '❌ Group admin or bot owner required.' : '❌ Bot owner required. Set OWNER_NUMBER in Heroku config.' }, { quoted: context.malik_msg });
         }
         if (command === 'livematches') return fetchMatches(sock, from, context.malik_msg);
         if (command === 'setlivematch') {
-            const matchId = (args[0] || '').replace(/[()]/g, '');
+            const matchInput = args.join(' ');
+            const matchId = (matchInput.match(/(?:id\s*)?\(?(\d+)\)?/i) || [])[1] || '';
             if (!/^\d+$/.test(matchId)) return sock.sendMessage(from, { text: 'Usage: `.setlivematch 138638`' }, { quoted: context.malik_msg });
-            await malik_updateCricketConfig(context.sessionId, { matchId });
+            if (!await saveCricketConfig(context.sessionId, { matchId })) return sock.sendMessage(from, { text: '❌ Database unavailable; match was not saved.' }, { quoted: context.malik_msg });
             return sock.sendMessage(from, { text: `✅ Live match set: *${matchId}*` }, { quoted: context.malik_msg });
         }
         if (command === 'setstream') {
             const streamUrl = args.join(' ').trim();
             if (!validStream(streamUrl)) return sock.sendMessage(from, { text: '❌ Send a direct HTTP/HTTPS `.m3u8` link only.' }, { quoted: context.malik_msg });
-            await malik_updateCricketConfig(context.sessionId, { streamUrl });
+            if (!await saveCricketConfig(context.sessionId, { streamUrl })) return sock.sendMessage(from, { text: '❌ Database unavailable; stream was not saved.' }, { quoted: context.malik_msg });
             return sock.sendMessage(from, { text: '✅ Direct M3U8 stream saved.' }, { quoted: context.malik_msg });
         }
         if (command === 'settarget') {
             const targetJids = parseJids(args.join(' '));
             if (!targetJids.length) return sock.sendMessage(from, { text: 'Usage: `.settarget 12345@g.us,67890@g.us`' }, { quoted: context.malik_msg });
-            await malik_updateCricketConfig(context.sessionId, { targetJids });
+            if (!await saveCricketConfig(context.sessionId, { targetJids })) return sock.sendMessage(from, { text: '❌ Database unavailable; targets were not saved.' }, { quoted: context.malik_msg });
             return sock.sendMessage(from, { text: `✅ Clip targets saved: ${targetJids.length}` }, { quoted: context.malik_msg });
         }
         if (command === 'setfooter') {
             const value = args.join(' ').trim();
             const footerEnabled = value.toLowerCase() !== 'off';
-            await malik_updateCricketConfig(context.sessionId, { footer: footerEnabled ? value : config.footer, footerEnabled });
+            if (!await saveCricketConfig(context.sessionId, { footer: footerEnabled ? value : config.footer, footerEnabled })) return sock.sendMessage(from, { text: '❌ Database unavailable; footer was not saved.' }, { quoted: context.malik_msg });
             return sock.sendMessage(from, { text: footerEnabled ? '✅ Footer updated.' : '✅ Footer disabled.' }, { quoted: context.malik_msg });
         }
         if (command === 'startupdate') {
             if (!config.matchId) return sock.sendMessage(from, { text: '❌ Set a match first: `.setlivematch 138638`' }, { quoted: context.malik_msg });
             if (!validStream(config.streamUrl)) return sock.sendMessage(from, { text: '❌ Set a direct M3U8 stream first: `.setstream <link>`' }, { quoted: context.malik_msg });
-            await malik_updateCricketConfig(context.sessionId, { updateEnabled: true });
+            if (!await saveCricketConfig(context.sessionId, { updateEnabled: true })) return sock.sendMessage(from, { text: '❌ Database unavailable; updates were not started.' }, { quoted: context.malik_msg });
             config.updateEnabled = true;
             await startTracker(sock, from, context, config);
             return sock.sendMessage(from, { text: panel('CRICKET UPDATES', ['✅ Started', `Match: ${config.matchId}`, 'One detailed commentary per new ball', 'Use `.stopupdate` to stop']) }, { quoted: context.malik_msg });
         }
         if (command === 'stopupdate') {
             await stopTracker(context.sessionId);
-            await malik_updateCricketConfig(context.sessionId, { updateEnabled: false });
+            await saveCricketConfig(context.sessionId, { updateEnabled: false });
             return sock.sendMessage(from, { text: '🛑 Cricket updates stopped.' }, { quoted: context.malik_msg });
         }
         if (command === 'cricket' && args[0]?.toLowerCase() === 'ffmpeg') {
