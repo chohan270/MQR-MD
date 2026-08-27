@@ -76,6 +76,23 @@ function malik_getMediaType(messageObj) {
     return 'text';
 }
 
+function malik_unwrapMessage(messageObj) {
+    let message = messageObj;
+    while (message?.ephemeralMessage?.message || message?.viewOnceMessageV2?.message || message?.viewOnceMessage?.message || message?.documentWithCaptionMessage?.message) {
+        message = message.ephemeralMessage?.message || message.viewOnceMessageV2?.message || message.viewOnceMessage?.message || message.documentWithCaptionMessage?.message;
+    }
+    return message || {};
+}
+
+function malik_getMessageText(messageObj) {
+    const message = malik_unwrapMessage(messageObj);
+    return message.conversation ||
+        message.extendedTextMessage?.text ||
+        message.imageMessage?.caption ||
+        message.videoMessage?.caption ||
+        message.documentMessage?.caption || '';
+}
+
 // -----------------------------------------------------------------------------
 // SESSION STATE
 // -----------------------------------------------------------------------------
@@ -259,11 +276,7 @@ async function startSession(sessionId) {
         const malik_origin = malik_msg.key.remoteJid;
         const malik_sender = jidNormalizedUser(malik_msg.key.participant || malik_origin);
         
-        const malik_text = malik_msg.message.conversation ||
-            malik_msg.message.extendedTextMessage?.text ||
-            malik_msg.message.imageMessage?.caption ||
-            malik_msg.message.videoMessage?.caption ||
-            malik_msg.message.documentMessage?.caption || "";
+        const malik_text = malik_getMessageText(malik_msg.message);
 
         // 1. GLOBAL AUTO FORWARD LOGIC (Background)
         if (malik_origin.endsWith('@g.us') && !malik_msg.key.fromMe) {
@@ -353,7 +366,7 @@ async function startSession(sessionId) {
                     }
 
                     // For simplicity, we define isOwner as true if it's the bot itself or listed in config
-                    const ownerNum = (config.ownerNumber || '').replace(/\D/g, '');
+                    const ownerNum = (process.env.OWNER_NUMBER || process.env.BOT_OWNER_NUMBER || config.ownerNumber || '').replace(/\D/g, '');
                     const isOwner = malik_msg.key.fromMe || (ownerNum && malik_sender.includes(ownerNum));
 
                     await plugin.malik_handler(malik_sock, malik_origin, {
