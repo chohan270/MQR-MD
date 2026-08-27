@@ -36,6 +36,23 @@ const OUTBOX = '/tmp/epaper_outbox';
 const BAQI_STAGING = '/tmp/epaper_baqi_staging';
 const TZ_OPTS = { timezone: 'Asia/Karachi' };
 
+// These editions are published after the 5:00 AM delivery slot. They must
+// remain pending until their actual publication window instead of falling
+// back to yesterday's latest issue.
+const EPAPER_AVAILABLE_AFTER = {
+    mashriq: '08:00',
+    islamk: '08:00',
+    aaj: '08:00',
+    naibaat: '08:00',
+    nawaiwaqt: '08:00',
+    dailyausaf: '08:00',
+    thenation: '08:00',
+    pakobserver: '08:00',
+    jasarat: '08:00',
+    khabrain: '08:00',
+    kawish: '15:00'
+};
+
 fs.ensureDirSync(WORKDIR);
 fs.ensureDirSync(OUTBOX);
 fs.ensureDirSync(BAQI_STAGING);
@@ -62,6 +79,14 @@ function pktDateStr() {
 // NEVER be sent, even if a retry finishes them early.
 function baqiSendTimeReached() {
     return pktNow().getHours() >= 5;
+}
+
+function editionAvailable(key) {
+    const availableAfter = EPAPER_AVAILABLE_AFTER[key];
+    if (!availableAfter) return true;
+    const [hour, minute] = availableAfter.split(':').map(Number);
+    const now = pktNow();
+    return now.getHours() > hour || (now.getHours() === hour && now.getMinutes() >= minute);
 }
 
 // Moves a finished (watermarked) PDF + its thumbnail out of OUTBOX into the
@@ -367,7 +392,7 @@ async function retryTick() {
     const due = allPending.filter((p) => p.date === dateStr);
     if (!due.length) return;
 
-    const keys = [...new Set(due.map((p) => p.key))];
+    const keys = [...new Set(due.map((p) => p.key).filter(editionAvailable))];
     console.log(`[epaper] 🔁 Retry tick: ${keys.join(', ')}`);
 
     const holdUntilFive = !baqiSendTimeReached();

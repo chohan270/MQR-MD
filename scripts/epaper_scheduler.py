@@ -80,12 +80,62 @@ def log(msg):
     print(f"[{now_pkt().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def availability_error(cfg):
+    available_after = cfg.get("available_after")
+    if not available_after:
+        return None
+    hour, minute = (int(part) for part in available_after.split(":", 1))
+    current = now_pkt()
+    if (current.hour, current.minute) < (hour, minute):
+        return f"today's edition is not expected before {available_after} PKT"
+    return None
+
+
+def has_current_date(filename):
+    """Reject a PDF whose own filename explicitly identifies another day."""
+    expected = now_pkt().date()
+    name = os.path.splitext(os.path.basename(filename))[0]
+    candidates = []
+    patterns = (
+        (r"(?<!\d)(\d{4})[-_](\d{2})[-_](\d{2})(?!\d)", "%Y-%m-%d"),
+        (r"(?<!\d)(\d{2})[-_](\d{2})[-_](\d{4})(?!\d)", "%d-%m-%Y"),
+        (r"(?<!\d)(\d{8})(?!\d)", "%Y%m%d"),
+    )
+    for pattern, date_format in patterns:
+        for value in re.findall(pattern, name, re.IGNORECASE):
+            token = "".join(value) if isinstance(value, tuple) else value
+            if date_format == "%Y-%m-%d":
+                token = "-".join(value)
+            elif date_format == "%d-%m-%Y":
+                token = "-".join(value)
+            try:
+                candidates.append(datetime.strptime(token, date_format).date())
+            except ValueError:
+                pass
+
+    month_pattern = r"(?<!\d)(\d{1,2})[-_ ]?(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?![A-Za-z])"
+    for day, month in re.findall(month_pattern, name, re.IGNORECASE):
+        try:
+            candidates.append(datetime.strptime(f"{day}{month}", "%d%B").replace(year=expected.year).date())
+        except ValueError:
+            try:
+                candidates.append(datetime.strptime(f"{day}{month}", "%d%b").replace(year=expected.year).date())
+            except ValueError:
+                pass
+
+    return not candidates or all(candidate == expected for candidate in candidates)
+
+
 def run_one(key, workdir_root, outbox_dir):
     cfg = NEWSPAPERS.get(key)
     if not cfg:
         return {"status": "failed", "display": key, "files": [], "error": "unknown newspaper key"}
 
     display = cfg["display"]
+    not_ready = availability_error(cfg)
+    if not_ready:
+        log(f"{display}: {not_ready}; previous-date PDF will not be requested")
+        return {"status": "failed", "display": display, "files": [], "error": not_ready}
     script_path = os.path.join(SCRIPT_DIR, cfg["script"])
     if not os.path.exists(script_path):
         return {"status": "failed", "display": display, "files": [], "error": f"script not found: {cfg['script']}"}
@@ -127,6 +177,15 @@ def run_one(key, workdir_root, outbox_dir):
     # the working dir (cwd mode, whatever relative folder the script used).
     search_root = raw_out_dir if cfg["mode"] == "argparse" else workdir
     raw_pdfs = sorted(glob.glob(os.path.join(search_root, "**", "*.pdf"), recursive=True))
+
+    dated_pdfs = []
+    for raw_pdf in raw_pdfs:
+        if has_current_date(raw_pdf):
+            dated_pdfs.append(raw_pdf)
+        else:
+            log(f"❌ {display}: rejecting explicit previous-date PDF {os.path.basename(raw_pdf)}")
+            os.remove(raw_pdf)
+    raw_pdfs = dated_pdfs
 
     elapsed = round(time.time() - t0, 1)
 

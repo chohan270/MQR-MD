@@ -17,7 +17,9 @@ Har entry ka matlab:
                    ho jata hai.
   extra_args   -> script ko diye jane wale additional CLI args
   batch        -> "express" (3:00 AM slot) ya "baqi" (4:30/5:00 AM slot)
-  sunday_only  -> True matlab ye sirf Sunday ko chalega (Sunday Magazine)
+    sunday_only  -> True matlab ye sirf Sunday ko chalega (Sunday Magazine)
+    available_after -> PKT mein woh waqt jab paper ki aaj ki copy aam tor par
+                                         available hoti hai; is se pehle downloader nahi chalega
   display      -> Insani-parhne-laiq naam (status/report messages ke liye)
 """
 
@@ -68,6 +70,7 @@ NEWSPAPERS = {
         "script": "nawaiwaqt.py",
         "mode": "cwd",
         "batch": "baqi",
+        "available_after": "08:00",
         # Nawaiwaqt script khud hi Sunday Magazine ko internally handle
         # karta hai (agar Sunday ho), koi extra flag nahi chahiye.
     },
@@ -82,6 +85,7 @@ NEWSPAPERS = {
         "script": "khabrain.py",
         "mode": "argparse",
         "batch": "baqi",
+        "available_after": "08:00",
         # Khabrain script khud Sunday Magazine ko apne "--editions" default
         # list mein add kar leta hai jab aaj Sunday ho.
     },
@@ -90,6 +94,7 @@ NEWSPAPERS = {
         "script": "naibaat.py",
         "mode": "cwd",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "naibaatmagazine": {
         "display": "Nai Baat Magazine",
@@ -121,6 +126,7 @@ NEWSPAPERS = {
         "script": "jasarat.py",
         "mode": "argparse",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "jehanpakistan": {
         "display": "Jehan Pakistan",
@@ -133,12 +139,14 @@ NEWSPAPERS = {
         "script": "islamk.py",
         "mode": "cwd",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "mashriq": {
         "display": "Mashriq",
         "script": "mashriq.py",
         "mode": "cwd",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "baithak": {
         "display": "Baithak",
@@ -163,6 +171,7 @@ NEWSPAPERS = {
         "script": "kawish.py",
         "mode": "argparse",
         "batch": "baqi",
+        "available_after": "15:00",
     },
     "mahasib": {
         "display": "Mahasib",
@@ -175,12 +184,14 @@ NEWSPAPERS = {
         "script": "pakobserver.py",
         "mode": "argparse",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "thenation": {
         "display": "The Nation",
         "script": "thenation.py",
         "mode": "cwd",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "ummat": {
         "display": "Ummat",
@@ -201,12 +212,14 @@ NEWSPAPERS = {
         "script": "aaj.py",
         "mode": "cwd",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "dailyausaf": {
         "display": "Daily Ausaf",
         "script": "dailyausaf.py",
         "mode": "argparse",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "dailyk2": {
         "display": "Daily K2",

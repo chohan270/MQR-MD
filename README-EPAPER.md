@@ -39,9 +39,11 @@ karta hai, jab tak maxRetries (default 4) khatam na ho.
 |---|---|
 | 3:00 AM (Mon–Sat) | Express: 11 editions **ek sath (parallel)** download → jo bhi pehle ban jaye turant send |
 | 5:30 AM (Sunday only) | Express (Sunday ko baad mein) |
-| 4:30 AM (daily) | Baqi 25 newspapers: **ek sath (parallel, up to 6 at a time)** download + watermark |
+| 4:30 AM (daily) | Early baqi newspapers download + watermark; late papers apne publication window tak hold |
 | 5:00 AM (daily) | Baqi 25 newspapers: jo ban chuki unko send + delete |
-| Har 15 min, 3AM–11:45PM | Sirf FAILED newspapers dobara try — **koi attempt-limit nahi**, jab tak wo ban na jaye tab tak poore din chalti rahegi |
+| 8:00 AM ke baad | Mashriq, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain: aaj ki copy available hone par retry/send |
+| 3:00 PM ke baad | Kawish: aaj ki copy available hone par retry/send |
+| Har 15 min, 3AM–11:45PM | Sirf FAILED newspapers dobara try — **koi attempt-limit nahi**, lekin har paper apne publication window se pehle run nahi hota |
 
 Newspapers ab **ek ek karke nahi, balke ek sath (parallel, max 6 simultaneously)**
 chalte hain — is se do fayde hain:
