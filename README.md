@@ -22,6 +22,24 @@ A streamlined, stable, and high-performance WhatsApp bot focused on **Auto-Forwa
 | `.gjids` | | List all your group names and their unique JIDs. |
 | `.jid` | | Get the JID of the current chat. |
 
+### Cricket commands
+
+| Command | Description |
+| ------- | ----------- |
+| `.cricket` | Open the cricket menu. |
+| `.livematches` | List live match names and Cricbuzz IDs. |
+| `.setlivematch 138638` | Select the match to track. |
+| `.setstream https://...m3u8` | Save a direct browser-accessible M3U8 stream. |
+| `.settarget jid1,jid2` | Set clip destination chats/groups. |
+| `.startupdate` / `.stopupdate` | Start or stop one-ball score updates. |
+| `.setfooter text` / `.setfooter off` | Change or disable the random six-ball footer. |
+| `.cricket ffmpeg` | Show the editable FFmpeg settings file. |
+
+Updates edit one WhatsApp message per chat and accept only one newest detailed
+commentary per ball. WICKET, SIX, and FOUR clips are sent to all configured
+targets and removed from local storage immediately afterward. FFmpeg is
+installed through `Aptfile`; tune its commands in `scripts/cricket_ffmpeg.py`.
+
 ---
 
 ## 💻 **SETUP & DEPLOYMENT**

@@ -151,6 +151,15 @@ const malik_epaperSentFileSchema = new mongoose.Schema({
 });
 malik_epaperSentFileSchema.index({ date: 1, fileName: 1 }, { unique: true });
 
+const malik_cricketConfigSchema = new mongoose.Schema({
+    matchId: { type: String, default: '' },
+    streamUrl: { type: String, default: '' },
+    updateEnabled: { type: Boolean, default: false },
+    targetJids: { type: [String], default: [] },
+    footer: { type: String, default: '© Powered By Qasim Cricket Bot - 03434571953' },
+    footerEnabled: { type: Boolean, default: true }
+});
+
 let isConnected = false;
 
 // ---------------------------------------------------------------------------
@@ -180,7 +189,31 @@ function getModel(sessionId, type) {
         case 'Rank': return mongoose.model(modelName, malik_rankSchema, collectionName);
         case 'EpaperConfig': return mongoose.model(modelName, malik_epaperConfigSchema, collectionName);
         case 'EpaperSentFile': return mongoose.model(modelName, malik_epaperSentFileSchema, collectionName);
+        case 'CricketConfig': return mongoose.model(modelName, malik_cricketConfigSchema, collectionName);
         default: throw new Error(`Unknown model type: ${type}`);
+    }
+}
+
+async function malik_getCricketConfig(sessionId) {
+    if (!isConnected) return null;
+    try {
+        const Model = getModel(sessionId, 'CricketConfig');
+        return await Model.findOneAndUpdate({}, {}, { upsert: true, new: true, setDefaultsOnInsert: true });
+    } catch (e) {
+        console.error('DB Error getCricketConfig:', e);
+        return null;
+    }
+}
+
+async function malik_updateCricketConfig(sessionId, updates) {
+    if (!isConnected) return false;
+    try {
+        const Model = getModel(sessionId, 'CricketConfig');
+        await Model.findOneAndUpdate({}, updates, { upsert: true, new: true, setDefaultsOnInsert: true });
+        return true;
+    } catch (e) {
+        console.error('DB Error updateCricketConfig:', e);
+        return false;
     }
 }
 // ---------------------------------------------------------------------------
