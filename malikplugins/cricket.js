@@ -121,7 +121,9 @@ module.exports = {
         }
         const config = await malik_getCricketConfig(context.sessionId) || {};
         const ownerOnly = ['setlivematch', 'setstream', 'startupdate', 'stopupdate', 'settarget', 'setfooter'];
-        const canManage = context.malik_isOwner || context.malik_isAdmin;
+        // Private-chat commands are the owner's control panel; groups still
+        // require a group admin or the configured bot owner.
+        const canManage = !context.malik_isGroup || context.malik_isOwner || context.malik_isAdmin;
         if (ownerOnly.includes(command) && !canManage) {
             return sock.sendMessage(from, { text: context.malik_isGroup ? '❌ Group admin or bot owner required.' : '❌ Bot owner required. Set OWNER_NUMBER in Heroku config.' }, { quoted: context.malik_msg });
         }
