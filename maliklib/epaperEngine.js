@@ -53,6 +53,12 @@ const EPAPER_AVAILABLE_AFTER = {
     kawish: '15:00'
 };
 
+const EPAPER_TIMING_TEXT = [
+    '5:00 AM: jo early papers available hon',
+    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain',
+    '3:00 PM ke baad: Kawish'
+];
+
 fs.ensureDirSync(WORKDIR);
 fs.ensureDirSync(OUTBOX);
 fs.ensureDirSync(BAQI_STAGING);
@@ -528,6 +534,7 @@ async function getStatusText(sessionId) {
     text += `*Target Groups:*\n${targets}\n\n`;
     text += `*Last Run:* ${cfg.lastRun ? new Date(cfg.lastRun).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }) : 'Never'}\n`;
     text += `*Last Summary:* ${cfg.lastRunSummary || '—'}\n\n`;
+    text += `*Newspaper Timings (Pakistan time):*\n${EPAPER_TIMING_TEXT.map((line) => `  • ${line}`).join('\n')}\n\n`;
     text += `*Pending Retries (today, unlimited until success):*\n${pendingText}\n\n`;
     text += `*Schedule:* Express 3:00 AM (Sun 5:30 AM) • Baqi 4:30/5:00 AM • failed newspapers retried every 15 min all day\n\n`;
     text += `*Commands:*\n`;
