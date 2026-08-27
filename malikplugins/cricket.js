@@ -108,6 +108,9 @@ module.exports = {
     malik_handler: async (sock, from, context) => {
         const command = context.malik_text.trim().slice(1).split(/\s+/)[0].toLowerCase();
         const args = context.malik_args;
+        if (command === 'cricket' && !args.length) {
+            return sock.sendMessage(from, { text: panel('CRICKET MENU', ['`.livematches` - list live matches and IDs', '`.setlivematch 138638` - choose match', '`.setstream <m3u8>` - set direct stream', '`.settarget jid1,jid2` - clip destinations', '`.startupdate` / `.stopupdate` - score updates', '`.setfooter text` or `.setfooter off`', '`.cricket ffmpeg` - clip recorder settings']) }, { quoted: context.malik_msg });
+        }
         const config = await malik_getCricketConfig(context.sessionId) || {};
         const ownerOnly = ['setlivematch', 'setstream', 'startupdate', 'stopupdate', 'settarget', 'setfooter'];
         if (ownerOnly.includes(command) && !context.malik_isOwner) {
