@@ -89,6 +89,14 @@ async function sendClip(sock, targets, filePath, event, from, quoted) {
     }
 }
 
+async function sendScoreUpdate(sock, targets, text) {
+    for (const jid of targets) {
+        await sock.sendMessage(jid, { text }).catch(error => {
+            console.error(`[cricket] score send failed -> ${jid}:`, error.message);
+        });
+    }
+}
+
 async function startTracker(sock, from, context, cfg) {
     await stopTracker(context.sessionId);
     const tracker = pythonProcess(
@@ -108,6 +116,7 @@ async function startTracker(sock, from, context, cfg) {
                 const sent = await sock.sendMessage(from, { text: result.text });
                 updateMessages.set(from, sent);
             }
+            await sendScoreUpdate(sock, cfg.targetJids || [], result.text);
             if (result.clip) await sendClip(sock, cfg.targetJids || [], result.clip, result.event || 'HIGHLIGHT', from, context.malik_msg);
         } catch (error) {
             console.error('[cricket] tracker output error:', error.message);
@@ -154,7 +163,6 @@ module.exports = {
         if (command === 'cricket' && !args.length) {
             return sock.sendMessage(from, { text: panel('CRICKET MENU', ['`.livematches` - list live matches and IDs', '`.setlivematch 138638` - choose match', '`.setstream <m3u8>` - set direct stream', '`.settarget jid1,jid2` - clip destinations', '`.startupdate` / `.stopupdate` - score updates', '`.setfooter text` or `.setfooter off`', '`.cricket ffmpeg` - clip recorder settings']) }, { quoted: context.malik_msg });
         }
-        const config = await loadCricketConfig(context.sessionId);
         const ownerOnly = ['setlivematch', 'setstream', 'startupdate', 'stopupdate', 'settarget', 'setfooter'];
         // Private-chat commands are the owner's control panel; groups still
         // require a group admin or the configured bot owner.
@@ -163,6 +171,18 @@ module.exports = {
             return sock.sendMessage(from, { text: context.malik_isGroup ? '❌ Group admin or bot owner required.' : '❌ Bot owner required. Set OWNER_NUMBER in Heroku config.' }, { quoted: context.malik_msg });
         }
         if (command === 'livematches') return fetchMatches(sock, from, context.malik_msg);
+        if (command === 'cricket' && args[0]?.toLowerCase() === 'ffmpeg') {
+            return sock.sendMessage(from, {
+                document: { url: path.join(__dirname, '..', 'scripts', 'cricket_ffmpeg.py') },
+                mimetype: 'text/x-python',
+                fileName: 'cricket_ffmpeg.py',
+                caption: panel('FFMPEG CLIPS', ['Editable FFmpeg command file attached.', 'Clip: 10 seconds before + 25 seconds after', 'Events: WICKET, SIX, FOUR'])
+            }, { quoted: context.malik_msg });
+        }
+        const needsStoredConfig = command === 'startupdate' || command === 'stopupdate';
+        const config = needsStoredConfig
+            ? await loadCricketConfig(context.sessionId)
+            : (localConfigs.get(context.sessionId) || { ...DEFAULT_CONFIG });
         if (command === 'setlivematch') {
             const matchInput = args.join(' ');
             const matchId = (matchInput.match(/(?:id\s*)?\(?(\d+)\)?/i) || [])[1] || '';
@@ -200,9 +220,6 @@ module.exports = {
             await stopTracker(context.sessionId);
             await saveCricketConfig(context.sessionId, { updateEnabled: false });
             return sock.sendMessage(from, { text: '🛑 Cricket updates stopped.' }, { quoted: context.malik_msg });
-        }
-        if (command === 'cricket' && args[0]?.toLowerCase() === 'ffmpeg') {
-            return sock.sendMessage(from, { text: panel('FFMPEG CLIPS', ['Editable file: `scripts/cricket_ffmpeg.py`', 'Clip: 10 seconds before + 25 seconds after', 'Events: WICKET, SIX, FOUR', 'Use `.setstream <direct .m3u8>` to enable recording']) }, { quoted: context.malik_msg });
         }
         return sock.sendMessage(from, { text: panel('CRICKET MENU', ['`.livematches` - list live matches and IDs', '`.setlivematch 138638` - choose match', '`.setstream <m3u8>` - set direct stream', '`.settarget jid1,jid2` - clip destinations', '`.startupdate` / `.stopupdate` - score updates', '`.setfooter text` or `.setfooter off`', '`.cricket ffmpeg` - clip recorder settings']) }, { quoted: context.malik_msg });
     }
