@@ -137,7 +137,9 @@ const malik_epaperConfigSchema = new mongoose.Schema({
     // Watermarked files ready in /tmp between the 4:30 AM "baqi download"
     // pass and the 5:00 AM "baqi send" pass.
     pendingSendBaqi: { type: [{ key: String, path: String, display: String }], default: [] },
-    pendingSendDate: { type: String, default: '' }
+    pendingSendDate: { type: String, default: '' },
+    deploymentGuardDate: { type: String, default: '' },
+    deploymentGuardAllowlist: { type: [String], default: [] }
 });
 
 // One row per PDF actually delivered to WhatsApp — used purely to skip
@@ -739,6 +741,30 @@ async function malik_isEpaperFileSent(sessionId, date, fileName) {
     }
 }
 
+async function malik_claimEpaperFile(sessionId, date, fileName, key) {
+    if (!isConnected) return true;
+    try {
+        const Model = getModel(sessionId, 'EpaperSentFile');
+        await Model.create({ date, fileName, key, sentAt: new Date() });
+        return true;
+    } catch (e) {
+        if (e.code !== 11000) console.error('DB Error claimEpaperFile:', e);
+        return false;
+    }
+}
+
+async function malik_releaseEpaperFileClaim(sessionId, date, fileName) {
+    if (!isConnected) return false;
+    try {
+        const Model = getModel(sessionId, 'EpaperSentFile');
+        await Model.deleteOne({ date, fileName });
+        return true;
+    } catch (e) {
+        console.error('DB Error releaseEpaperFileClaim:', e);
+        return false;
+    }
+}
+
 async function malik_markEpaperFileSent(sessionId, date, fileName, key) {
     if (!isConnected) return false;
     try {
@@ -805,6 +831,8 @@ module.exports = {
     malik_getEpaperConfig,
     malik_updateEpaperConfig,
     malik_isEpaperFileSent,
+    malik_claimEpaperFile,
+    malik_releaseEpaperFileClaim,
     malik_markEpaperFileSent,
     malik_clearEpaperSentToday
 };

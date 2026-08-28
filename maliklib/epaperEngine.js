@@ -22,8 +22,8 @@ const cron = require('node-cron');
 const {
     malik_getEpaperConfig,
     malik_updateEpaperConfig,
-    malik_isEpaperFileSent,
-    malik_markEpaperFileSent
+    malik_claimEpaperFile,
+    malik_releaseEpaperFileClaim
 } = require('./database');
 
 const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
@@ -57,6 +57,8 @@ const EPAPER_TIMING_TEXT = [
     '8:00 AM ke baad: Mashriq, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain',
     '3:00 PM ke baad: Kawish'
 ];
+
+const DEPLOYMENT_GUARD_KEYS = new Set(['aaj', 'dailyausaf', 'kawish']);
 
 fs.ensureDirSync(WORKDIR);
 fs.ensureDirSync(OUTBOX);
@@ -92,6 +94,34 @@ function editionAvailable(key) {
     const [hour, minute] = availableAfter.split(':').map(Number);
     const now = pktNow();
     return now.getHours() > hour || (now.getHours() === hour && now.getMinutes() >= minute);
+}
+
+async function getDeliveryConfig(dateStr) {
+    const cfg = await malik_getEpaperConfig(currentSessionId);
+    if (cfg?.deploymentGuardDate) return cfg;
+
+    const allowlist = [...DEPLOYMENT_GUARD_KEYS];
+    await malik_updateEpaperConfig(currentSessionId, {
+        deploymentGuardDate: dateStr,
+        deploymentGuardAllowlist: allowlist
+    });
+    return {
+        ...(cfg?.toObject ? cfg.toObject() : cfg),
+        deploymentGuardDate: dateStr,
+        deploymentGuardAllowlist: allowlist
+    };
+}
+
+function isAllowedDuringGuard(cfg, key, dateStr) {
+    return cfg?.deploymentGuardDate !== dateStr || (cfg.deploymentGuardAllowlist || []).includes(key);
+}
+
+function editionKeyFromFileName(fileName) {
+    const normalized = fileName.toLowerCase();
+    if (normalized.startsWith('aaj ')) return 'aaj';
+    if (normalized.startsWith('daily ausaf ')) return 'dailyausaf';
+    if (normalized.startsWith('kawish ')) return 'kawish';
+    return 'leftover';
 }
 
 // Moves a finished (watermarked) PDF + its thumbnail out of OUTBOX into the
@@ -194,7 +224,7 @@ async function runSequentialEditions(keys, onItem) {
 // WHATSAPP DELIVERY (fresh sendMessage -> never carries a "Forwarded" tag)
 // -----------------------------------------------------------------------------
 async function sendFiles(items, dateStr) {
-    const cfg = await malik_getEpaperConfig(currentSessionId);
+    const cfg = await getDeliveryConfig(dateStr);
     const targets = cfg?.targetJids || [];
     let sentCount = 0;
 
@@ -202,10 +232,8 @@ async function sendFiles(items, dateStr) {
         const fileName = path.basename(filePath);
         const thumbPath = filePath.replace(/\.pdf$/i, '.thumb.jpg');
 
-        const already = await malik_isEpaperFileSent(currentSessionId, dateStr, fileName);
-        if (already) {
-            await fs.remove(filePath).catch(() => {});
-            await fs.remove(thumbPath).catch(() => {});
+        if (!isAllowedDuringGuard(cfg, key, dateStr)) {
+            console.log(`[epaper] deployment guard: skipping ${fileName} for today`);
             continue;
         }
 
@@ -218,6 +246,12 @@ async function sendFiles(items, dateStr) {
 
         if (!(await fs.pathExists(filePath))) {
             console.error(`[epaper] file missing, skipping: ${filePath}`);
+            continue;
+        }
+
+        if (!(await malik_claimEpaperFile(currentSessionId, dateStr, fileName, key))) {
+            await fs.remove(filePath).catch(() => {});
+            await fs.remove(thumbPath).catch(() => {});
             continue;
         }
 
@@ -255,9 +289,9 @@ async function sendFiles(items, dateStr) {
             // file. Leave it in the outbox so the next tick can retry the
             // send without having to re-download/re-watermark anything.
             console.error(`[epaper] all sends failed for ${fileName} — keeping file, will retry`);
+            await malik_releaseEpaperFileClaim(currentSessionId, dateStr, fileName);
             continue;
         }
-        await malik_markEpaperFileSent(currentSessionId, dateStr, fileName, key);
         sentCount++;
         // Delete from Heroku /tmp ONLY (never from WhatsApp) -- frees both
         // disk AND the RAM Node/Baileys was using to stream/encrypt it.
@@ -374,7 +408,7 @@ async function sweepOutbox(dateStr) {
     }
     const pdfs = files.filter((f) => f.toLowerCase().endsWith('.pdf'));
     if (!pdfs.length) return 0;
-    const items = pdfs.map((f) => ({ key: 'leftover', path: path.join(OUTBOX, f) }));
+    const items = pdfs.map((f) => ({ key: editionKeyFromFileName(f), path: path.join(OUTBOX, f) }));
     return sendFiles(items, dateStr);
 }
 

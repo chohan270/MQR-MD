@@ -1,86 +1,55 @@
-# 🤖 MALIK MD AUTOFORWARD BOT 🤖
-### Developed by [Mr Malik (ixxmalik)](https://github.com/ixxmalik)
+# Malik Newspapers
 
-A streamlined, stable, and high-performance WhatsApp bot focused on **Auto-Forwarding** and core utility commands.
+Malik Newspapers is a WhatsApp e-paper delivery bot for Pakistani newspaper editions. It downloads the current issue, builds a PDF, applies the project watermark, and delivers it to configured groups through a persistent Baileys session.
 
----
+## Reliability
 
-## 🚀 **CORE FEATURES**
-- 🔄 **Auto-Forwarding**: Automatically relay messages from source groups to target chats including channels/newsletters.
-- 🧹 **Smart Cleaning**: Automatically removes "Forwarded" labels and "Forwarding Scores".
-- ✍️ **Regex Replacement**: Swap text/captions (like removing old links or adding your own footer) on the fly.
-- 💾 **Safe Session Management**: Uses MongoDB for persistent auth states, ensuring your bot never logs out.
-- ⚡ **Light & Fast**: Stripped of bloated plugins for extreme stability and speed.
+- MongoDB-backed WhatsApp authentication preserves the existing session across Heroku restarts.
+- Every PDF gets one atomic delivery claim, so overlapping cron runs and retries cannot send the same file twice.
+- Failed downloads and failed deliveries remain retryable without re-sending a completed file.
+- Each downloader runs in an isolated temporary folder, preventing edition files from colliding.
+- The News files use names such as `TheNews Lahore 28August.pdf`.
 
----
+## Commands
 
-## 🛠️ **AVAILABLE COMMANDS**
-| Command | Alias | Description |
-| ------- | ----- | ----------- |
-| `.af` | `.autoforward` | Configure auto-forward targets for the current group. |
-| `.f` | `.forward` | Manually forward a replied message to multiple JIDs. |
-| `.gjids` | | List all your group names and their unique JIDs. |
-| `.jid` | | Get the JID of the current chat. |
+| Command | Purpose |
+| --- | --- |
+| `.menu` / `.help` | Show the command deck. |
+| `.af` | Configure auto-forwarding for the current chat. |
+| `.af epaper set jid1,jid2` | Set e-paper destination groups. |
+| `.af epaper on` / `.off` | Enable or pause scheduled delivery. |
+| `.af epaper run` | Run an immediate e-paper pass. |
+| `.af epaper` | Show e-paper status and pending retries. |
+| `.f` | Forward a replied message to selected JIDs. |
+| `.gjids` | List group names and JIDs. |
+| `.jid` | Show the current chat JID. |
+| `.cricket` | Open cricket tools and live-score controls. |
 
-### Cricket commands
+## Run locally
 
-| Command | Description |
-| ------- | ----------- |
-| `.cricket` | Open the cricket menu. |
-| `.livematches` | List live match names and Cricbuzz IDs. |
-| `.setlivematch 138638` | Select the match to track. |
-| `.setstream https://...m3u8` | Save a direct browser-accessible M3U8 stream. |
-| `.settarget jid1,jid2` | Set clip destination chats/groups. |
-| `.startupdate` / `.stopupdate` | Start or stop one-ball score updates. |
-| `.setfooter text` / `.setfooter off` | Change or disable the random six-ball footer. |
-| `.cricket ffmpeg` | Show the editable FFmpeg settings file. |
+Requirements: Node.js 20+, Python 3, and MongoDB.
 
-Updates edit one WhatsApp message per chat and accept only one newest detailed
-commentary per ball. WICKET, SIX, and FOUR clips are sent to all configured
-targets and removed from local storage immediately afterward. FFmpeg is
-installed through `Aptfile`; tune its commands in `scripts/cricket_ffmpeg.py`.
-
----
-
-## 💻 **SETUP & DEPLOYMENT**
-
-### **Prerequisites**
-- **Node.js 20+**
-- **MongoDB Database** (Essential for session stability)
-
-### **Local Installation**
-```bash
-# Clone the repository
-git clone https://github.com/MalikxChaudhary-dev/Malik-Md
-
-# Install dependencies
+```powershell
 npm install
-
-# Configure environment variables
-# See below for requirements
-
-# Start the bot
 npm start
 ```
 
----
+Set `SESSION_ID` and `MONGODB_URI` in the environment. Keep the existing values when redeploying an already-linked bot.
 
-## ⚙️ **ENVIRONMENT VARIABLES**
+## Deploy to Heroku
 
-| Variable | Description |
-| -------- | ----------- |
-| `MONGODB_URI` | Your MongoDB connection string. |
-| `SESSION_ID` | Custom session name (defaults to `malik_session`). |
-| `OLD_TEXT_REGEX` | Comma-separated list of patterns to replace. |
-| `NEW_TEXT` | Replacement string (what to put instead of old text). |
-| `OWNER_NUMBER` | Your personal WhatsApp number (e.g., `92123456789`). |
+```powershell
+git push heroku master
+heroku ps:scale web=1 -a epapers
+heroku logs --tail -a epapers
+```
 
----
+On the first deploy date, a one-time guard allows only Aaj, Daily Ausaf, and Kawish, preventing another resend of papers already delivered today. Normal delivery resumes automatically on the next Pakistan date. Deployment does not clear session data or MongoDB authentication records.
 
-## ❤️ **CREDITS**
-- **Base connection**: [Whiskeysockets Baileys](https://github.com/WhiskeySockets/Baileys)
-- **Main Developer**: [Mr Malik (ixxmalik)](https://github.com/ixxmalik)
-- **Repo Version**: 1.0.0 (Stable)
+## Layout
 
----
-> _Powered by Mr Malik (ixxmalik)_
+- `index.js`: web process and WhatsApp connection lifecycle
+- `maliklib/epaperEngine.js`: scheduling, retries, and delivery claims
+- `maliklib/database.js`: MongoDB models and persistence
+- `scripts/`: newspaper downloaders and e-paper scheduler
+- `malikplugins/`: WhatsApp command plugins

@@ -11,14 +11,6 @@ module.exports = {
         
         const categories = {};
         const handledCommands = new Set();
-        const categoryIcons = {
-            Group: '👥',
-            Tools: '🧰',
-            Debug: '🧪',
-            Information: '📚',
-            General: '🧩'
-        };
-        
         for (const [key, plugin] of malik_plugins.entries()) {
             if (handledCommands.has(plugin.name)) continue;
             handledCommands.add(plugin.name);
@@ -28,21 +20,22 @@ module.exports = {
             categories[category].push(plugin);
         }
 
-        let menuText = `┏━━━〔 *MALIK COMMAND DECK* 〕━━━┓\n`;
-        menuText += `┃ 👤 @${malik_sender.split('@')[0]}\n`;
-        menuText += `┃ ⚙️ Prefix: .  •  ${handledCommands.size} commands\n`;
-        menuText += `┗━━━━━━━━━━━━━━━━━━━━━━┛\n\n`;
+        let menuText = `+================================+\n`;
+        menuText += `|        MALIK COMMANDS         |\n`;
+        menuText += `+--------------------------------+\n`;
+        menuText += `| User: @${malik_sender.split('@')[0]}\n`;
+        menuText += `| Prefix: .   Total: ${handledCommands.size}\n`;
+        menuText += `+================================+\n\n`;
         
-        for (const category in categories) {
-            const icon = categoryIcons[category] || categoryIcons.General;
-            menuText += `╞══ ${icon} *${category.toUpperCase()}* ══╡\n`;
-            categories[category].forEach(cmd => {
-                menuText += `┃  ${icon}  .${cmd.name}\n`;
+        for (const [category, plugins] of Object.entries(categories)) {
+            menuText += `+--[ ${category.toUpperCase()} ]----------------+\n`;
+            plugins.forEach(cmd => {
+                menuText += `| .${cmd.name.padEnd(18)} ${(cmd.desc || '').slice(0, 13)}\n`;
             });
-            menuText += `╘══════════════════╛\n\n`;
+            menuText += `+--------------------------------+\n\n`;
         }
         
-        menuText += `> _Crafted for smooth forwarding • Malik MD_`;
+        menuText += `- Malik MD / focused forwarding -`;
 
         await malik_sock.sendMessage(malik_origin, { 
             text: menuText,
