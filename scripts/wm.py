@@ -208,7 +208,11 @@ def process_pdf(pdf_path, output_path):
     reader = PdfReader(pdf_path)
     writer = PdfWriter()
 
-    watermarked_front, front_img = build_watermarked_front_page(reader)
+    try:
+        watermarked_front, front_img = build_watermarked_front_page(reader)
+    except Exception as e:
+        print(f"  ⚠️ Page 1 watermark skip: {e}")
+        watermarked_front, front_img = None, None
     if watermarked_front is not None:
         writer.add_page(watermarked_front)
         print("  ✅ Page 1 (front page) watermark ho gaya")

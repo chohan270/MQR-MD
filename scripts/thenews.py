@@ -35,7 +35,7 @@ def _page_to_jpeg_bytes(raw_bytes):
         img.close()
         return buf.getvalue()
     except Exception:
-        return raw_bytes
+        return None
 
 # ===== EDITIONS =====
 # The News sirf 3 shehron se print hoti hai (Jang ki tarah 5 nahi)
@@ -73,7 +73,10 @@ for name, edition in EDITIONS.items():
                 r = requests.get(url, headers=headers, timeout=10)
 
                 if r.status_code == 200:
-                    jpeg_pages.append(_page_to_jpeg_bytes(r.content))
+                    page_bytes = _page_to_jpeg_bytes(r.content)
+                    if page_bytes is None:
+                        continue
+                    jpeg_pages.append(page_bytes)
                     print(f"✅ Page {page} add ho gaya ({ext})")
                     mila = True
                     break

@@ -69,7 +69,7 @@ except ImportError:
 
 try:
     from PIL import Image, ImageFile
-    ImageFile.LOAD_TRUNCATED_IMAGES = True  # safety net; hum phir bhi manually verify karte hain
+    ImageFile.LOAD_TRUNCATED_IMAGES = False
 except ImportError:
     sys.exit("Pillow missing hai. Pehle chalayein: pip install pillow")
 

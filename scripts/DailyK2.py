@@ -153,7 +153,6 @@ def download_page(url):
                 response.status_code == 200
                 and response.content
             ):
-
                 return response
 
             if response.status_code == 404:
@@ -253,8 +252,13 @@ def download_image(url):
                 response.status_code == 200
                 and response.content
             ):
-
-                return response.content
+                try:
+                    image = Image.open(io.BytesIO(response.content))
+                    image.verify()
+                    image.close()
+                    return response.content
+                except Exception:
+                    pass
 
         except requests.RequestException:
 
