@@ -48,7 +48,6 @@ const EPAPER_AVAILABLE_AFTER = {
     dailyausaf: '08:00',
     thenation: '08:00',
     pakobserver: '08:00',
-    jasarat: '08:00',
     khabrain: '08:00',
     kawish: '15:00'
 };

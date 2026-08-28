@@ -219,8 +219,7 @@ def process_pdf(pdf_path, output_path):
     else:
         writer.add_page(reader.pages[0])
         print("  ⚠️ Page 1 mein image nahi mili, watermark skip (as-is copy)")
-        imgs = reader.pages[0].images
-        front_img = imgs[0].image.convert("RGB") if imgs else None
+        front_img = None
 
     for i in range(1, len(reader.pages)):
         writer.add_page(reader.pages[i])

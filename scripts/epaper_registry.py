@@ -126,7 +126,6 @@ NEWSPAPERS = {
         "script": "jasarat.py",
         "mode": "argparse",
         "batch": "baqi",
-        "available_after": "08:00",
     },
     "jehanpakistan": {
         "display": "Jehan Pakistan",
