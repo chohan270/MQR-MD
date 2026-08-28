@@ -557,18 +557,12 @@ async function getStatusText(sessionId) {
 
     const status = cfg.enabled ? '🟢 ON' : '🔴 OFF';
     const targets = cfg.targetJids?.length ? cfg.targetJids.map((j, i) => `  ${i + 1}. ${j}`).join('\n') : '  None set';
-    const pending = (cfg.pendingRetries || []).filter((p) => p.date === pktDateStr());
-    const pendingText = pending.length
-        ? pending.map((p) => `  • ${p.key} (${p.attempts} attempt${p.attempts === 1 ? '' : 's'} so far, still trying)`).join('\n')
-        : '  None';
-
     let text = `🗞️ *EPAPER AUTO-SYSTEM*\n\n`;
     text += `*Status:* ${status}\n`;
     text += `*Target Groups:*\n${targets}\n\n`;
     text += `*Last Run:* ${cfg.lastRun ? new Date(cfg.lastRun).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }) : 'Never'}\n`;
     text += `*Last Summary:* ${cfg.lastRunSummary || '—'}\n\n`;
     text += `*Newspaper Timings (Pakistan time):*\n${EPAPER_TIMING_TEXT.map((line) => `  • ${line}`).join('\n')}\n\n`;
-    text += `*Pending Retries (today, unlimited until success):*\n${pendingText}\n\n`;
     text += `*Schedule:* Express 3:00 AM (Sun 5:30 AM) • Baqi 4:30/5:00 AM • failed newspapers retried every 15 min all day\n\n`;
     text += `*Commands:*\n`;
     text += `• \`.af epaper set jid1, jid2\` — set target groups\n`;
