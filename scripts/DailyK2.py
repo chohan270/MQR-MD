@@ -76,13 +76,18 @@ EDITIONS = {
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (Linux; Android 14) "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/124.0.0.0 "
-        "Mobile Safari/537.36"
-    )
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": f"{BASE_URL}/",
+    "Cache-Control": "no-cache",
 }
+
+HTTP_SESSION = requests.Session()
+HTTP_SESSION.headers.update(HEADERS)
 
 
 # ===================================================
@@ -143,10 +148,10 @@ def download_page(url):
 
         try:
 
-            response = requests.get(
-                url,
-                headers=HEADERS,
-                timeout=REQUEST_TIMEOUT
+            response = HTTP_SESSION.get(
+                f"{url}?_={int(time.time() * 1000)}",
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=True
             )
 
             if (
@@ -155,11 +160,17 @@ def download_page(url):
             ):
                 return response
 
-            if response.status_code == 404:
+            if response.status_code in (404, 410):
+
+                log(f"    Page unavailable: HTTP {response.status_code} ({url})")
 
                 return None
 
-        except requests.RequestException:
+            log(f"    Page request retry: HTTP {response.status_code} ({url})")
+
+        except requests.RequestException as error:
+
+            log(f"    Page request retry: {error}")
 
             pass
 
