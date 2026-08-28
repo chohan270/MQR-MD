@@ -86,6 +86,13 @@ HEADERS = {
     "Cache-Control": "no-cache",
 }
 
+LEGACY_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+    )
+}
+
 HTTP_SESSION = requests.Session()
 HTTP_SESSION.headers.update(HEADERS)
 
@@ -146,33 +153,19 @@ def download_page(url):
         RETRY_PER_PAGE + 1
     ):
 
-        try:
-
-            response = HTTP_SESSION.get(
-                f"{url}?_={int(time.time() * 1000)}",
-                timeout=REQUEST_TIMEOUT,
-                allow_redirects=True
-            )
-
-            if (
-                response.status_code == 200
-                and response.content
-            ):
-                return response
-
-            if response.status_code in (404, 410):
-
-                log(f"    Page unavailable: HTTP {response.status_code} ({url})")
-
-                return None
-
-            log(f"    Page request retry: HTTP {response.status_code} ({url})")
-
-        except requests.RequestException as error:
-
-            log(f"    Page request retry: {error}")
-
-            pass
+        request_url = f"{url}?_={int(time.time() * 1000)}"
+        methods = ((HTTP_SESSION, "session"), (requests, "legacy"))
+        for client, method in methods:
+            try:
+                kwargs = {"timeout": REQUEST_TIMEOUT, "allow_redirects": True}
+                if method == "legacy":
+                    kwargs["headers"] = LEGACY_HEADERS
+                response = client.get(request_url, **kwargs)
+                if response.status_code == 200 and response.content:
+                    return response
+                log(f"    {method} page request: HTTP {response.status_code} ({url})")
+            except requests.RequestException as error:
+                log(f"    {method} page request failed: {error}")
 
         if attempt < RETRY_PER_PAGE:
 

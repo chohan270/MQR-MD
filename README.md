@@ -43,7 +43,7 @@ heroku ps:scale web=1 -a epapers
 heroku logs --tail -a epapers
 ```
 
-On the first deploy date, a one-time guard allows only Aaj, Daily Ausaf, and Kawish, preventing another resend of papers already delivered today. Normal delivery resumes automatically on the next Pakistan date. Deployment does not clear session data or MongoDB authentication records.
+Automatic uploading is controlled with `.af epaper on` and `.af epaper off`; manual runs such as `.af epaper run jasarat` remain available. Once a newspaper file is sent, its MongoDB sent record prevents another delivery until `.af epaper clearsent` is used. Deployment does not clear session data, sent records, or MongoDB authentication records.
 
 ## Layout
 

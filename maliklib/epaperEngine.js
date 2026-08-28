@@ -58,8 +58,6 @@ const EPAPER_TIMING_TEXT = [
     '3:00 PM ke baad: Kawish'
 ];
 
-const DEPLOYMENT_GUARD_KEYS = new Set(['aaj', 'dailyausaf', 'kawish']);
-
 fs.ensureDirSync(WORKDIR);
 fs.ensureDirSync(OUTBOX);
 fs.ensureDirSync(BAQI_STAGING);
@@ -94,34 +92,6 @@ function editionAvailable(key) {
     const [hour, minute] = availableAfter.split(':').map(Number);
     const now = pktNow();
     return now.getHours() > hour || (now.getHours() === hour && now.getMinutes() >= minute);
-}
-
-async function getDeliveryConfig(dateStr) {
-    const cfg = await malik_getEpaperConfig(currentSessionId);
-    if (cfg?.deploymentGuardDate) return cfg;
-
-    const allowlist = [...DEPLOYMENT_GUARD_KEYS];
-    await malik_updateEpaperConfig(currentSessionId, {
-        deploymentGuardDate: dateStr,
-        deploymentGuardAllowlist: allowlist
-    });
-    return {
-        ...(cfg?.toObject ? cfg.toObject() : cfg),
-        deploymentGuardDate: dateStr,
-        deploymentGuardAllowlist: allowlist
-    };
-}
-
-function isAllowedDuringGuard(cfg, key, dateStr) {
-    return cfg?.deploymentGuardDate !== dateStr || (cfg.deploymentGuardAllowlist || []).includes(key);
-}
-
-function editionKeyFromFileName(fileName) {
-    const normalized = fileName.toLowerCase();
-    if (normalized.startsWith('aaj ')) return 'aaj';
-    if (normalized.startsWith('daily ausaf ')) return 'dailyausaf';
-    if (normalized.startsWith('kawish ')) return 'kawish';
-    return 'leftover';
 }
 
 // Moves a finished (watermarked) PDF + its thumbnail out of OUTBOX into the
@@ -224,18 +194,13 @@ async function runSequentialEditions(keys, onItem) {
 // WHATSAPP DELIVERY (fresh sendMessage -> never carries a "Forwarded" tag)
 // -----------------------------------------------------------------------------
 async function sendFiles(items, dateStr) {
-    const cfg = await getDeliveryConfig(dateStr);
+    const cfg = await malik_getEpaperConfig(currentSessionId);
     const targets = cfg?.targetJids || [];
     let sentCount = 0;
 
     for (const { key, path: filePath } of items) {
         const fileName = path.basename(filePath);
         const thumbPath = filePath.replace(/\.pdf$/i, '.thumb.jpg');
-
-        if (!isAllowedDuringGuard(cfg, key, dateStr)) {
-            console.log(`[epaper] deployment guard: skipping ${fileName} for today`);
-            continue;
-        }
 
         if (!targets.length || !currentSock) {
             // No target groups set yet (or bot not connected) -- leave the
@@ -408,7 +373,7 @@ async function sweepOutbox(dateStr) {
     }
     const pdfs = files.filter((f) => f.toLowerCase().endsWith('.pdf'));
     if (!pdfs.length) return 0;
-    const items = pdfs.map((f) => ({ key: editionKeyFromFileName(f), path: path.join(OUTBOX, f) }));
+    const items = pdfs.map((f) => ({ key: 'leftover', path: path.join(OUTBOX, f) }));
     return sendFiles(items, dateStr);
 }
 
@@ -557,8 +522,8 @@ async function getStatusText(sessionId) {
 
     const status = cfg.enabled ? '🟢 ON' : '🔴 OFF';
     const targets = cfg.targetJids?.length ? cfg.targetJids.map((j, i) => `  ${i + 1}. ${j}`).join('\n') : '  None set';
-    let text = `🗞️ *EPAPER AUTO-SYSTEM*\n\n`;
-    text += `*Status:* ${status}\n`;
+    let text = `╭━━━〔 🗞️ *EPAPER CONTROL* 〕━━━╮\n\n`;
+    text += `*AUTO UPLOAD:* ${status}\n`;
     text += `*Target Groups:*\n${targets}\n\n`;
     text += `*Last Run:* ${cfg.lastRun ? new Date(cfg.lastRun).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }) : 'Never'}\n`;
     text += `*Last Summary:* ${cfg.lastRunSummary || '—'}\n\n`;
@@ -570,7 +535,8 @@ async function getStatusText(sessionId) {
     text += `• \`.af epaper run\` — run everything right now\n`;
     text += `• \`.af epaper run <key>\` — test ONE newspaper (e.g. \`.af epaper run jang\`)\n`;
     text += `• \`.af epaper keys\` — list all newspaper keys\n`;
-    text += `• \`.af epaper clearsent\` — clear today's "already sent" records (testing)`;
+    text += `• \`.af epaper clearsent\` — allow today's papers again`;
+    text += `\n\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯`;
 
     return text;
 }
