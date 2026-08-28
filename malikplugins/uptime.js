@@ -14,11 +14,11 @@ module.exports = {
         const minutes = Math.floor((uptimeSeconds % 3600) / 60);
         const seconds = Math.floor(uptimeSeconds % 60);
 
-        let uptimeStr = `┏━ ⏱️ *SYSTEM UPTIME* ━┓\n┃ 🤖 Malik MD is online\n┃ `;
+        let uptimeStr = `╭━━━〔 ⏱️ *SYSTEM UPTIME* 〕━━━╮\n┃ 🤖 *MALIK MD IS ONLINE*\n┃ `;
         if (days > 0) uptimeStr += `📅 ${days}d `;
         if (hours > 0) uptimeStr += `🕒 ${hours}h `;
         if (minutes > 0) uptimeStr += `⏳ ${minutes}m `;
-        uptimeStr += `⚡ ${seconds}s\n┗━━━━━━━━━━━━━━━━━━━━┛`;
+        uptimeStr += `⚡ ${seconds}s\n╰━━━━━━━━━━━━━━━━━━━━━━╯`;
 
         await malik_sock.sendMessage(malik_origin, { text: uptimeStr });
     }

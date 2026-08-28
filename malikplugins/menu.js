@@ -20,22 +20,20 @@ module.exports = {
             categories[category].push(plugin);
         }
 
-        let menuText = `+================================+\n`;
-        menuText += `|        MALIK COMMANDS         |\n`;
-        menuText += `+--------------------------------+\n`;
-        menuText += `| User: @${malik_sender.split('@')[0]}\n`;
-        menuText += `| Prefix: .   Total: ${handledCommands.size}\n`;
-        menuText += `+================================+\n\n`;
+        let menuText = `╭━━━〔 ✨ *MALIK COMMANDS* ✨ 〕━━━╮\n`;
+        menuText += `┃ 👤 @${malik_sender.split('@')[0]}\n`;
+        menuText += `┃ ⚙️ Prefix: .  •  📚 ${handledCommands.size} commands\n`;
+        menuText += `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n`;
         
         for (const [category, plugins] of Object.entries(categories)) {
-            menuText += `+--[ ${category.toUpperCase()} ]----------------+\n`;
+            menuText += `┏━━━〔 📌 *${category.toUpperCase()}* 〕━━━┓\n`;
             plugins.forEach(cmd => {
-                menuText += `| .${cmd.name.padEnd(18)} ${(cmd.desc || '').slice(0, 13)}\n`;
+                menuText += `┃ 🔹 .${cmd.name}\n`;
             });
-            menuText += `+--------------------------------+\n\n`;
+            menuText += `┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n`;
         }
         
-        menuText += `- Malik MD / focused forwarding -`;
+        menuText += `🌟 *Malik MD*  |  simple, sharp, ready`;
 
         await malik_sock.sendMessage(malik_origin, { 
             text: menuText,

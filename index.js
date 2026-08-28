@@ -32,7 +32,7 @@ function malik_loadPlugins() {
     if (!fs.existsSync(pluginDir)) return;
 
     // We only want these specific filenames/commands as per user request
-    const requested = ['autoforward.js', 'forward.js', 'gjids.js', 'jid.js', 'uptime.js', 'ping.js', 'menu.js', 'cricket.js'];
+    const requested = ['autoforward.js', 'forward.js', 'gjids.js', 'jid.js', 'uptime.js', 'ping.js', 'menu.js'];
     
     for (const file of requested) {
         const filePath = path.join(pluginDir, file);

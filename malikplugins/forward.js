@@ -15,7 +15,7 @@ module.exports = {
         // 1. Get Quoted Message
         let quoted = malik_msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) {
-            return await malik_sock.sendMessage(malik_sender, { text: '┏━ 📤 *FORWARD DESK* ━┓\n┃ ❌ Reply to a message first.\n┗━━━━━━━━━━━━━━━━━━┛' });
+            return await malik_sock.sendMessage(malik_sender, { text: '╭━━━〔 📤 *FORWARD DESK* 〕━━━╮\n┃ ❌ Reply to a message first.\n╰━━━━━━━━━━━━━━━━━━━━━━╯' });
         }
 
         // 1b. Robust Unwrap & Clean (Handle View Once & regex replacement)
@@ -41,7 +41,7 @@ module.exports = {
 
         const targetJids = inputArgs.split(',').map(j => j.trim()).filter(j => j.length > 0);
         if (targetJids.length === 0) {
-            return await malik_sock.sendMessage(malik_sender, { text: '┏━ 📤 *FORWARD DESK* ━┓\n┃ ❌ No valid JIDs found.\n┗━━━━━━━━━━━━━━━━━━┛' });
+            return await malik_sock.sendMessage(malik_sender, { text: '╭━━━〔 📤 *FORWARD DESK* 〕━━━╮\n┃ ❌ No valid JIDs found.\n╰━━━━━━━━━━━━━━━━━━━━━━╯' });
         }
 
         // 3. Prepare the Forward (No Labels as per user request)
@@ -84,12 +84,12 @@ module.exports = {
 
         // 5. Final Report (صرف فیل ہونے پر)
         if (failCount > 0) {
-            let report = `┏━ 📤 *FORWARD REPORT* ━┓\n`;
+            let report = `╭━━━〔 📤 *FORWARD REPORT* 〕━━━╮\n`;
             report += `┃ ⚠️ کچھ JIDs پر بھیجنا ناکام رہا\n\n`;
             report += `❌ *Failed:* ${failCount}\n`;
             report += `✨ *Mode:* Native Relay`;
             report += `\n\n*Failed List:*\n${failedJids.map(j => `> ${j}`).join('\n')}`;
-            report += `\n┗━━━━━━━━━━━━━━━━━━━━┛`;
+            report += `\n╰━━━━━━━━━━━━━━━━━━━━━━╯`;
 
             await malik_sock.sendMessage(malik_sender, { text: report });
         }

@@ -22,7 +22,7 @@ function parseJids(input) {
 }
 
 function commandPanel(title, lines) {
-    return `┏━ 🔄 *${title}* ━┓\n${lines.map((line) => `┃ ${line}`).join('\n')}\n┗━━━━━━━━━━━━━━━━━━━━┛`;
+    return `╭━━━〔 🔄 *${title}* 〕━━━╮\n${lines.map((line) => `┃ ${line}`).join('\n')}\n╰━━━━━━━━━━━━━━━━━━━━━━╯`;
 }
 
 module.exports = {

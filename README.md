@@ -23,7 +23,6 @@ Malik Newspapers is a WhatsApp e-paper delivery bot for Pakistani newspaper edit
 | `.f` | Forward a replied message to selected JIDs. |
 | `.gjids` | List group names and JIDs. |
 | `.jid` | Show the current chat JID. |
-| `.cricket` | Open cricket tools and live-score controls. |
 
 ## Run locally
 
