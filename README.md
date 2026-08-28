@@ -1,41 +1,77 @@
-# Malik Newspapers
+# 🗞️ Malik Newspapers | Newsroom Console
 
-Malik Newspapers is a WhatsApp e-paper delivery bot for Pakistani newspaper editions. It downloads the current issue, builds a PDF, applies the project watermark, and delivers it to configured groups through a persistent Baileys session.
+Malik Newspapers is a WhatsApp e-paper automation bot built for fast, tidy and dependable newspaper delivery. It collects the day’s editions, turns pages into PDFs, applies the project watermark and sends them to selected WhatsApp groups.
 
-## Reliability
+This is an operations-focused bot: automatic delivery can be paused at any time, individual papers can be requested manually, and a paper that has already been sent stays locked until the owner deliberately clears its record.
 
-- MongoDB-backed WhatsApp authentication preserves the existing session across Heroku restarts.
-- Every PDF gets one atomic delivery claim, so overlapping cron runs and retries cannot send the same file twice.
-- Failed downloads and failed deliveries remain retryable without re-sending a completed file.
-- Each downloader runs in an isolated temporary folder, preventing edition files from colliding.
-- The News files use names such as `TheNews Lahore 28August.pdf`.
+## ✦ What It Handles
 
-## Commands
+📡 **Scheduled delivery** — Run the newspaper schedule in Pakistan Standard Time.
 
-| Command | Purpose |
+🎯 **Target control** — Choose one or more WhatsApp groups for e-paper delivery.
+
+🧾 **Duplicate lock** — Each date and PDF filename receives one atomic MongoDB sent record. Retries, restarts and manual runs cannot send that same file again.
+
+🧹 **Controlled reset** — Use `.af epaper clearsent` when a same-day paper genuinely needs to be sent again.
+
+🧩 **Isolated downloads** — Every newspaper works in its own temporary workspace, so editions do not overwrite one another.
+
+📰 **Readable filenames** — The News editions follow names such as `TheNews Lahore 28August.pdf`.
+
+## 🎛️ E-Paper Control Desk
+
+All e-paper controls are owner-only.
+
+| Command | Action |
 | --- | --- |
-| `.menu` / `.help` | Show the command deck. |
-| `.af` | Configure auto-forwarding for the current chat. |
-| `.af epaper set jid1,jid2` | Set e-paper destination groups. |
-| `.af epaper on` / `.off` | Enable or pause scheduled delivery. |
-| `.af epaper run` | Run an immediate e-paper pass. |
-| `.af epaper` | Show e-paper status and pending retries. |
-| `.f` | Forward a replied message to selected JIDs. |
-| `.gjids` | List group names and JIDs. |
+| `.af epaper` | Open the e-paper control/status page. |
+| `.af epaper on` | Turn automatic newspaper uploading on. |
+| `.af epaper off` | Pause automatic uploading. |
+| `.af epaper set jid1,jid2` | Set destination groups. |
+| `.af epaper run` | Start a complete manual pass. |
+| `.af epaper run jasarat` | Download/send one selected newspaper. |
+| `.af epaper keys` | Show available newspaper keys. |
+| `.af epaper clearsent` | Clear today’s sent records and allow those PDFs again. |
+
+Manual runs remain available when automatic uploading is off. Turning automatic uploading off does not delete targets, sent records or the WhatsApp session.
+
+## 🧭 Everyday Commands
+
+| Command | Action |
+| --- | --- |
+| `.menu` / `.help` | Open the formatted command index. |
+| `.af` | Open the group forwarding control desk. |
+| `.af on` / `.af off` | Enable or pause forwarding for the current group. |
+| `.af set jid1,jid2` | Save forwarding targets for the current group. |
+| `.af global` | View global forwarding status. |
+| `.f <jids>` | Send a replied message to selected chats. |
+| `.gjids` | List participating groups and their JIDs. |
 | `.jid` | Show the current chat JID. |
+| `.ping` | Check response and server latency. |
+| `.uptime` | Show how long the bot has been online. |
 
-## Run locally
+## 🛡️ Delivery Rules
 
-Requirements: Node.js 20+, Python 3, and MongoDB.
+1. A completed PDF is claimed atomically before delivery, preventing overlapping runs from sending it twice.
+2. A failed delivery releases its claim and remains eligible for retry.
+3. A successful delivery is recorded by Pakistan date and filename.
+4. The record remains effective across Heroku restarts and redeploys.
+5. Only `.af epaper clearsent` removes today’s sent records.
+
+## 🧰 Local Setup
+
+Requirements: Node.js 20+, Python 3 and MongoDB.
 
 ```powershell
 npm install
 npm start
 ```
 
-Set `SESSION_ID` and `MONGODB_URI` in the environment. Keep the existing values when redeploying an already-linked bot.
+Configure `SESSION_ID` and `MONGODB_URI` through the environment. For an already-linked deployment, preserve the existing values so the same WhatsApp session and MongoDB data continue to be used.
 
-## Deploy to Heroku
+## 🚀 Heroku Release
+
+The project is deployed to the existing `epapers` app:
 
 ```powershell
 git push heroku master
@@ -43,12 +79,16 @@ heroku ps:scale web=1 -a epapers
 heroku logs --tail -a epapers
 ```
 
-Automatic uploading is controlled with `.af epaper on` and `.af epaper off`; manual runs such as `.af epaper run jasarat` remain available. Once a newspaper file is sent, its MongoDB sent record prevents another delivery until `.af epaper clearsent` is used. Deployment does not clear session data, sent records, or MongoDB authentication records.
+Deployment does not clear the WhatsApp session, MongoDB authentication, target groups or sent-file records.
 
-## Layout
+## 🧱 Project Map
 
-- `index.js`: web process and WhatsApp connection lifecycle
-- `maliklib/epaperEngine.js`: scheduling, retries, and delivery claims
-- `maliklib/database.js`: MongoDB models and persistence
-- `scripts/`: newspaper downloaders and e-paper scheduler
-- `malikplugins/`: WhatsApp command plugins
+| Path | Responsibility |
+| --- | --- |
+| `index.js` | WhatsApp connection, web process and plugin loading. |
+| `maliklib/epaperEngine.js` | Scheduling, downloading, retries and delivery claims. |
+| `maliklib/database.js` | MongoDB persistence and sent-file locking. |
+| `scripts/` | Newspaper downloaders and PDF preparation. |
+| `malikplugins/` | WhatsApp command pages and forwarding controls. |
+
+<p align="center"><b>Built for clean editions, calm retries and one delivery per file.</b></p>
