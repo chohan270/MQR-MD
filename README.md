@@ -4,9 +4,21 @@ Malik Newspapers is a WhatsApp e-paper automation bot built for fast, tidy and d
 
 This is an operations-focused bot: automatic delivery can be paused at any time, individual papers can be requested manually, and a paper that has already been sent stays locked until the owner deliberately clears its record.
 
-## ✦ What It Handles
+## 📣 Auto-Forward Desk
 
-📡 **Scheduled delivery** — Run the newspaper schedule in Pakistan Standard Time.
+The main bot workflow is message forwarding. Configure sources, targets and group-level forwarding without changing the saved WhatsApp session.
+
+📤 **Direct forwarding** — Send a replied message to selected chats with `.f`.
+
+🔁 **Group forwarding** — Turn forwarding on or off for the current group.
+
+🌐 **Global forwarding** — Manage owner-controlled source and target groups from `.af global`.
+
+🧽 **Clean relay** — Forwarded labels and configured text replacements are handled by the bot’s cleaning layer.
+
+## 📰 Newspaper Desk
+
+📡 **Scheduled delivery** — Run newspaper downloads in Pakistan Standard Time.
 
 🎯 **Target control** — Choose one or more WhatsApp groups for e-paper delivery.
 
@@ -80,15 +92,5 @@ heroku logs --tail -a epapers
 ```
 
 Deployment does not clear the WhatsApp session, MongoDB authentication, target groups or sent-file records.
-
-## 🧱 Project Map
-
-| Path | Responsibility |
-| --- | --- |
-| `index.js` | WhatsApp connection, web process and plugin loading. |
-| `maliklib/epaperEngine.js` | Scheduling, downloading, retries and delivery claims. |
-| `maliklib/database.js` | MongoDB persistence and sent-file locking. |
-| `scripts/` | Newspaper downloaders and PDF preparation. |
-| `malikplugins/` | WhatsApp command pages and forwarding controls. |
 
 <p align="center"><b>Built for clean editions, calm retries and one delivery per file.</b></p>
