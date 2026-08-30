@@ -1,42 +1,12 @@
-import gc
 import requests
-import img2pdf
 from PIL import Image
 from io import BytesIO
 from datetime import datetime
 import os
 
-# ===== TODAY DATE =====
+# ===== TODAY DATE (M-D-YYYY) =====
 today = datetime.now()
 DATE_STR = f"{today.month}-{today.day}-{today.year}"  # example: 2-9-2026
-# Pretty date for the OUTPUT filename only (e.g. "26August") -- keeps names
-# human-readable AND, critically, prefixed with "Jang" below so the file
-# never collides with another newspaper's PDF of the same edition/date
-# (e.g. Jang Lahore vs The News Lahore).
-PRETTY_DATE = today.strftime("%d%B")
-
-
-def _page_to_jpeg_bytes(raw_bytes):
-    """
-    Ek dafa mein sirf EK page RAM mein decode hota hai (memory-safe --
-    pehle poori list RGB PIL Image objects se bhar jaati thi, jo 25-30
-    high-res pages ke liye 500MB+ RAM le leta tha aur "memory quota
-    exceeded" crash deta tha). Agar image already ek plain RGB JPEG hai
-    to bina re-encode kiye seedha wapis kar deta hai (fastest, no
-    decode at all).
-    """
-    try:
-        img = Image.open(BytesIO(raw_bytes))
-        if img.format == "JPEG" and img.mode == "RGB":
-            img.close()
-            return raw_bytes
-        img = img.convert("RGB")
-        buf = BytesIO()
-        img.save(buf, format="JPEG", quality=92)
-        img.close()
-        return buf.getvalue()
-    except Exception:
-        return raw_bytes
 
 # ===== EDITIONS =====
 EDITIONS = {
@@ -58,7 +28,7 @@ os.makedirs("jang_pdfs", exist_ok=True)
 
 for name, edition in EDITIONS.items():
     print(f"\n📘 {name} edition start")
-    jpeg_pages = []  # compressed JPEG bytes only -- NOT decoded PIL images
+    pdf_images = []
 
     for page in range(1, MAX_PAGES + 1):
         mila = False
@@ -75,7 +45,8 @@ for name, edition in EDITIONS.items():
                 r = requests.get(url, headers=headers, timeout=10)
 
                 if r.status_code == 200:
-                    jpeg_pages.append(_page_to_jpeg_bytes(r.content))
+                    img = Image.open(BytesIO(r.content)).convert("RGB")
+                    pdf_images.append(img)
                     print(f"✅ Page {page} add ho gaya ({ext})")
                     mila = True
                     break
@@ -86,16 +57,13 @@ for name, edition in EDITIONS.items():
             print(f"❌ {name} page {page} nahi mila, edition complete")
             break
 
-    if jpeg_pages:
-        # "Jang" prefix + edition + pretty date -> e.g. "Jang Lahore 26August.pdf"
-        # Prefix ki wajah se ye kabhi bhi "The News" (ya kisi aur newspaper)
-        # ki usi edition-naam wali PDF se collide/duplicate nahi hoti.
-        pdf_path = f"jang_pdfs/Jang {name} {PRETTY_DATE}.pdf"
-        with open(pdf_path, "wb") as f:
-            f.write(img2pdf.convert(jpeg_pages))
+    if pdf_images:
+        pdf_path = f"jang_pdfs/{name}_{DATE_STR}.pdf"
+        pdf_images[0].save(
+            pdf_path,
+            save_all=True,
+            append_images=pdf_images[1:]
+        )
         print(f"📕 PDF ban gayi: {pdf_path}")
     else:
         print(f"⚠️ {name} ki koi page nahi mila")
-
-    jpeg_pages = None
-    gc.collect()

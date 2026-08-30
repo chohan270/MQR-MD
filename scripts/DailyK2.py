@@ -28,11 +28,9 @@ Usage:
 import os
 import time
 import io
-import gc
 import datetime
 
 import requests
-import img2pdf
 from bs4 import BeautifulSoup
 from PIL import Image
 
@@ -41,11 +39,8 @@ from PIL import Image
 
 BASE_URL = "https://epaper.dailyk2.com"
 
-# Relative folder -- works for both manual Termux runs and the automated
-# scheduler (which searches its own temp working dir recursively for
-# *.pdf; an absolute Android-only path like /sdcard/... would never be
-# found there, so those PDFs would silently never get auto-forwarded).
-OUTPUT_FOLDER = "DailyK2_Epaper_PDFs"
+# Daily K2 PDFs yahan save hongi
+OUTPUT_FOLDER = "/sdcard/Documents"
 
 # None = aaj ki date
 #
@@ -76,25 +71,13 @@ EDITIONS = {
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "Mozilla/5.0 (Linux; Android 14) "
         "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": f"{BASE_URL}/",
-    "Cache-Control": "no-cache",
-}
-
-LEGACY_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        "(KHTML, like Gecko) "
+        "Chrome/124.0.0.0 "
+        "Mobile Safari/537.36"
     )
 }
-
-HTTP_SESSION = requests.Session()
-HTTP_SESSION.headers.update(HEADERS)
 
 
 # ===================================================
@@ -153,19 +136,28 @@ def download_page(url):
         RETRY_PER_PAGE + 1
     ):
 
-        request_url = f"{url}?_={int(time.time() * 1000)}"
-        methods = ((HTTP_SESSION, "session"), (requests, "legacy"))
-        for client, method in methods:
-            try:
-                kwargs = {"timeout": REQUEST_TIMEOUT, "allow_redirects": True}
-                if method == "legacy":
-                    kwargs["headers"] = LEGACY_HEADERS
-                response = client.get(request_url, **kwargs)
-                if response.status_code == 200 and response.content:
-                    return response
-                log(f"    {method} page request: HTTP {response.status_code} ({url})")
-            except requests.RequestException as error:
-                log(f"    {method} page request failed: {error}")
+        try:
+
+            response = requests.get(
+                url,
+                headers=HEADERS,
+                timeout=REQUEST_TIMEOUT
+            )
+
+            if (
+                response.status_code == 200
+                and response.content
+            ):
+
+                return response
+
+            if response.status_code == 404:
+
+                return None
+
+        except requests.RequestException:
+
+            pass
 
         if attempt < RETRY_PER_PAGE:
 
@@ -256,13 +248,8 @@ def download_image(url):
                 response.status_code == 200
                 and response.content
             ):
-                try:
-                    image = Image.open(io.BytesIO(response.content))
-                    image.verify()
-                    image.close()
-                    return response.content
-                except Exception:
-                    pass
+
+                return response.content
 
         except requests.RequestException:
 
@@ -370,28 +357,20 @@ def download_edition(
         return False
 
     # ================= PDF =================
-    # Memory-safe: JPEG bytes seedha PDF mein wrap hote hain, poori list
-    # decode karke RAM mein RGB images ke tor par nahi rakhi jaati
-    # (pehle wala tareeqa 20 high-res pages par bhi memory crash de
-    # sakta tha).
 
-    jpeg_pages = []
+    pil_images = []
 
     for raw in images:
 
         try:
 
-            img = Image.open(io.BytesIO(raw))
+            img = Image.open(
+                io.BytesIO(raw)
+            ).convert("RGB")
 
-            if img.format == "JPEG" and img.mode == "RGB":
-                img.close()
-                jpeg_pages.append(raw)
-            else:
-                img = img.convert("RGB")
-                buf = io.BytesIO()
-                img.save(buf, format="JPEG", quality=92)
-                img.close()
-                jpeg_pages.append(buf.getvalue())
+            pil_images.append(
+                img
+            )
 
         except Exception as error:
 
@@ -401,7 +380,7 @@ def download_edition(
                 f"{error}"
             )
 
-    if not jpeg_pages:
+    if not pil_images:
 
         return False
 
@@ -425,18 +404,18 @@ def download_edition(
         out_name
     )
 
-    with open(out_path, "wb") as f:
-        f.write(img2pdf.convert(jpeg_pages))
+    pil_images[0].save(
+        out_path,
+        save_all=True,
+        append_images=pil_images[1:]
+    )
 
     log(
         f"==> {name}: "
         f"PDF ban gaya -- "
         f"{out_name} "
-        f"({len(jpeg_pages)} pages)"
+        f"({len(pil_images)} pages)"
     )
-
-    jpeg_pages = None
-    gc.collect()
 
     return True
 

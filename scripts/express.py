@@ -69,16 +69,9 @@ except ImportError:
 
 try:
     from PIL import Image, ImageFile
-    ImageFile.LOAD_TRUNCATED_IMAGES = False
+    ImageFile.LOAD_TRUNCATED_IMAGES = True  # safety net; hum phir bhi manually verify karte hain
 except ImportError:
     sys.exit("Pillow missing hai. Pehle chalayein: pip install pillow")
-
-try:
-    import img2pdf
-except ImportError:
-    sys.exit("img2pdf missing hai. Pehle chalayein: pip install img2pdf")
-
-import gc
 
 
 BASE = "https://www.express.com.pk"
@@ -319,19 +312,11 @@ def process_edition(issue, edition_name, outdir, keep_images, wait_for_today=Tru
         log(f"==> {issue}: koi page nahi mila (site down ya block ho sakta hai). Skip.")
         return None
 
-    # CRITICAL: agar site ne aaj ({wanted_date}) ki bajaye purani date de di,
-    # to us purani PDF ko HARGIZ nahi banate -- warna purani (kal wali) copy
-    # naye din bhi group mein chali jaati hai. Is edition ko FAILED treat
-    # karte hain taake scheduler isay har 15 min baad dobara try karta rahe
-    # jab tak sach mein NAYI date ka edition upload na ho jaye.
     if date_str != wanted_date:
         log(
-            f"==> {issue}: SKIP -- aaj ({wanted_date}) ka edition ab tak site par "
-            f"upload nahi hua (mila to sirf {date_str} wali purani copy). Purani "
-            f"date ki PDF NAHI banayenge -- agli retry (15 min baad) mein dobara "
-            f"try hoga jab tak asli NAYI date ka edition na mil jaye."
+            f"==> {issue}: WARNING -- aaj ({wanted_date}) ka edition ab tak site par "
+            f"upload nahi hua, isliye {date_str} wali (purani) copy download ho rahi hai."
         )
-        return None
 
     log(f"==> {issue}: {len(pages)} pages mile, date = {date_str}")
 
@@ -392,12 +377,8 @@ def _download_and_build_pdf(session, issue, edition_name, pages, date_str, outdi
         for idx, content in ex.map(worker, enumerate(pages)):
             downloaded[idx] = content
 
-    # Memory-safe: sirf EK page ek waqt mein decode hota hai (agar valid
-    # RGB JPEG already hai to bilkul decode nahi hota, bytes seedha PDF
-    # mein wrap ho jaate hain). Pehle poori list RGB PIL Image objects se
-    # bharti thi -- Express jaisi 11-edition/30-page script ke liye ye
-    # "memory quota exceeded" crash ki sabse badi wajah thi.
-    jpeg_pages = []
+    # sahi page-tarteeb mein PIL Images bana lo (koi stamping nahi)
+    pil_images = []
     if keep_images:
         tag = f"{issue}_{date_str}" + (f"_{suffix.replace(' ', '_')}" if suffix else "")
         tmp_dir = os.path.join(outdir, "_raw", tag)
@@ -410,22 +391,15 @@ def _download_and_build_pdf(session, issue, edition_name, pages, date_str, outdi
         try:
             im = Image.open(io.BytesIO(content))
             im.load()
-            if im.format == "JPEG" and im.mode == "RGB":
-                jpeg_bytes = content
-            else:
-                im = im.convert("RGB")
-                buf = io.BytesIO()
-                im.save(buf, format="JPEG", quality=95)
-                jpeg_bytes = buf.getvalue()
-            if keep_images:
-                with open(os.path.join(tmp_dir, f"{idx+1:02d}_{item['pagecode']}.jpg"), "wb") as fh:
-                    fh.write(jpeg_bytes)
+            im = im.convert("RGB")
         except Exception as e:
             log(f"    [{label}] page {idx+1} ({item['pagecode']}) open error, skip: {e}")
             continue
-        jpeg_pages.append(jpeg_bytes)
+        pil_images.append(im)
+        if keep_images:
+            im.save(os.path.join(tmp_dir, f"{idx+1:02d}_{item['pagecode']}.jpg"), quality=95)
 
-    if not jpeg_pages:
+    if not pil_images:
         log(f"==> {label}: koi bhi page successfully download nahi hua, PDF skip.")
         return None
 
@@ -440,14 +414,11 @@ def _download_and_build_pdf(session, issue, edition_name, pages, date_str, outdi
         pdf_name = f"Express {edition_name} {pretty_date}.pdf"  # e.g. "Express Lahore 11July.pdf"
     pdf_path = os.path.join(outdir, pdf_name)
 
-    n_pages = len(jpeg_pages)
-    with open(pdf_path, "wb") as f:
-        f.write(img2pdf.convert(jpeg_pages))
-    jpeg_pages = None
-    gc.collect()
-    log(f"==> {label}: PDF ban gayi -> {pdf_path}  ({n_pages}/{len(pages)} pages)")
-    if n_pages < len(pages):
-        log(f"    NOTE: {len(pages) - n_pages} page(s) is edition mein download nahi ho saka.")
+    first, rest = pil_images[0], pil_images[1:]
+    first.save(pdf_path, save_all=True, append_images=rest)
+    log(f"==> {label}: PDF ban gayi -> {pdf_path}  ({len(pil_images)}/{len(pages)} pages)")
+    if len(pil_images) < len(pages):
+        log(f"    NOTE: {len(pages) - len(pil_images)} page(s) is edition mein download nahi ho saka.")
     return pdf_path
 
 
