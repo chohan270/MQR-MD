@@ -1,4 +1,4 @@
-# 🗞️ Malik Newspapers | Newsroom Console
+# 🗞️ Malik MD
 
 Malik Newspapers is a WhatsApp e-paper automation bot built for fast, tidy and dependable newspaper delivery. It collects the day’s editions, turns pages into PDFs, applies the project watermark and sends them to selected WhatsApp groups.
 
