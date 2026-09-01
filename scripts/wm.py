@@ -216,16 +216,17 @@ def process_pdf(pdf_path, output_path):
     except Exception as e:
         print(f"  ⚠️ Page 1 watermark skip: {e}")
         watermarked_front, front_img = None, None
-    if watermarked_front is not None:
-        writer.add_page(watermarked_front)
-        print("  ✅ Page 1 (front page) watermark ho gaya")
-    else:
-        writer.add_page(reader.pages[0])
-        print("  ⚠️ Page 1 mein image nahi mili, watermark skip (as-is copy)")
-        front_img = None
-
-    for i in range(1, len(reader.pages)):
-        writer.add_page(reader.pages[i])
+    for idx, page in enumerate(reader.pages):
+        if idx == 0:
+            if watermarked_front is not None:
+                writer.add_page(watermarked_front)
+                print("  ✅ Page 1 (front page) watermark ho gaya")
+            else:
+                writer.add_page(page)
+                print("  ⚠️ Page 1 mein image nahi mili, watermark skip (as-is copy)")
+                front_img = None
+            continue
+        writer.add_page(page)
 
     if EXTRA_LAST_PDF and os.path.exists(EXTRA_LAST_PDF):
         for p in PdfReader(EXTRA_LAST_PDF).pages:
