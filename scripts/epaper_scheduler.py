@@ -98,17 +98,19 @@ def has_current_date(filename):
     name = os.path.splitext(os.path.basename(filename))[0]
     candidates = []
     patterns = (
-        (r"(?<!\d)(\d{4})[-_](\d{2})[-_](\d{2})(?!\d)", "%Y-%m-%d"),
-        (r"(?<!\d)(\d{2})[-_](\d{2})[-_](\d{4})(?!\d)", "%d-%m-%Y"),
+        (r"(?<!\d)(\d{4})[-_](\d{1,2})[-_](\d{1,2})(?!\d)", "%Y-%m-%d"),
+        (r"(?<!\d)(\d{1,2})[-_](\d{1,2})[-_](\d{4})(?!\d)", "%m-%d-%Y"),
+        (r"(?<!\d)(\d{1,2})[-_](\d{1,2})[-_](\d{2})(?!\d)", "%m-%d-%y"),
+        (r"(?<!\d)(\d{1,2})[-_](\d{1,2})[-_](\d{4})(?!\d)", "%d-%m-%Y"),
+        (r"(?<!\d)(\d{1,2})[-_](\d{1,2})[-_](\d{2})(?!\d)", "%d-%m-%y"),
         (r"(?<!\d)(\d{8})(?!\d)", "%Y%m%d"),
     )
     for pattern, date_format in patterns:
         for value in re.findall(pattern, name, re.IGNORECASE):
-            token = "".join(value) if isinstance(value, tuple) else value
-            if date_format == "%Y-%m-%d":
-                token = "-".join(value)
-            elif date_format == "%d-%m-%Y":
-                token = "-".join(value)
+            if isinstance(value, tuple):
+                token = "-".join(part for part in value if part)
+            else:
+                token = value
             try:
                 candidates.append(datetime.strptime(token, date_format).date())
             except ValueError:
@@ -124,7 +126,7 @@ def has_current_date(filename):
             except ValueError:
                 pass
 
-    return not candidates or all(candidate == expected for candidate in candidates)
+    return bool(candidates) and any(candidate == expected for candidate in candidates)
 
 
 def run_one(key, workdir_root, outbox_dir):

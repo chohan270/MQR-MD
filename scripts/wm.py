@@ -76,7 +76,10 @@ WHITESPACE_ROW_RATIO = 0.90      # ek row "white" tab manegi jab uske itne % pix
 WHITESPACE_BRIGHTNESS = 235      # 0-255, isse upar wala pixel "white" mana jayega
 WHITESPACE_MIN_PERCENT = 1.0     # white band agar page height ke itne % se zyada ho, to "whitespace hai"
 
-EXTRA_LAST_PDF = os.path.join(_ASSETS_DIR, "pbk.pdf")
+# Extra watermark page is intentionally disabled. The front page watermark
+# must remain on the real front page only; appending pbk.pdf created a false
+# extra page and caused the watermark to appear on a later page instead.
+EXTRA_LAST_PDF = None
 
 # ===================================================
 

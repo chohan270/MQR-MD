@@ -45,16 +45,18 @@ const EPAPER_AVAILABLE_AFTER = {
     aaj: '08:00',
     naibaat: '08:00',
     nawaiwaqt: '08:00',
-    dailyausaf: '08:00',
+    dailyausaf: '11:30',
     thenation: '08:00',
-    pakobserver: '08:00',
+    pakobserver: '10:20',
     khabrain: '08:00',
     kawish: '15:00'
 };
 
 const EPAPER_TIMING_TEXT = [
     '5:00 AM: jo early papers available hon',
-    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain',
+    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Nai Baat, Nawaiwaqt, The Nation, Jasarat, Khabrain',
+    '10:20 AM ke baad: Pakistan Observer',
+    '11:30 AM ke baad: Daily Ausaf',
     '3:00 PM ke baad: Kawish'
 ];
 
