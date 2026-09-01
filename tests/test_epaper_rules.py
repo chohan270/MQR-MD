@@ -51,6 +51,33 @@ class EpaperRulesTest(unittest.TestCase):
 
             self.assertEqual(len(reader.pages), 2)
 
+    def test_process_pdf_appends_group_branding_pdf(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, 'source.pdf')
+            brand_path = os.path.join(tmpdir, 'pbk.pdf')
+            output_path = os.path.join(tmpdir, 'output.pdf')
+
+            source_writer = PdfWriter()
+            source_writer.add_blank_page(width=200, height=300)
+            source_writer.add_blank_page(width=200, height=300)
+            with open(input_path, 'wb') as fh:
+                source_writer.write(fh)
+
+            brand_writer = PdfWriter()
+            brand_writer.add_blank_page(width=200, height=300)
+            with open(brand_path, 'wb') as fh:
+                brand_writer.write(fh)
+
+            original_branding = wm.EXTRA_LAST_PDF
+            wm.EXTRA_LAST_PDF = brand_path
+            try:
+                wm.process_pdf(input_path, output_path)
+            finally:
+                wm.EXTRA_LAST_PDF = original_branding
+
+            reader = PdfReader(output_path)
+            self.assertEqual(len(reader.pages), 3)
+
 
 if __name__ == '__main__':
     unittest.main()
