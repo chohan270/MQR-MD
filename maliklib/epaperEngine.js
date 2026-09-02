@@ -41,6 +41,7 @@ const TZ_OPTS = { timezone: 'Asia/Karachi' };
 // back to yesterday's latest issue.
 const EPAPER_AVAILABLE_AFTER = {
     mashriq: '08:00',
+    mashriqakhbar: '10:00',
     islamk: '08:00',
     aaj: '08:00',
     naibaat: '08:00',
@@ -49,12 +50,14 @@ const EPAPER_AVAILABLE_AFTER = {
     thenation: '08:00',
     pakobserver: '10:20',
     khabrain: '08:00',
-    kawish: '15:00'
+    kawish: '15:00',
+    pakistantoday: '08:00'
 };
 
 const EPAPER_TIMING_TEXT = [
     '5:00 AM: jo early papers available hon',
-    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Nai Baat, Nawaiwaqt, The Nation, Jasarat, Khabrain',
+    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Pakistan Today, Nai Baat, Nawaiwaqt, The Nation, Jasarat, Khabrain',
+    '10:00 AM ke baad: Mashriq Akhbar',
     '10:20 AM ke baad: Pakistan Observer',
     '11:30 AM ke baad: Daily Ausaf',
     '3:00 PM ke baad: Kawish'
@@ -548,7 +551,7 @@ const EPAPER_KEYS = [
     'express', 'jang', 'jangsundaymagazine', 'thenews', 'dawn', 'asas',
     'nawaiwaqt', 'dailypakistan', 'khabrain', 'naibaat', 'naibaatmagazine',
     'countrynews', 'parliamenttimes', 'sahafat', 'jasarat', 'jehanpakistan',
-    'islamk', 'mashriq', 'baithak', 'ghaznavi', 'intekhab', 'kawish',
+    'islamk', 'mashriq', 'mashriqakhbar', 'baithak', 'ghaznavi', 'intekhab', 'kawish',
     'mahasib', 'pakobserver', 'thenation', 'ummat',
     'pakistantoday', 'aaj', 'dailyausaf', 'dailyk2', 'jinnah'
 ];

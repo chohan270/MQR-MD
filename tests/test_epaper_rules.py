@@ -78,6 +78,14 @@ class EpaperRulesTest(unittest.TestCase):
             reader = PdfReader(output_path)
             self.assertEqual(len(reader.pages), 3)
 
+    def test_registry_includes_mashriq_akhbar_and_pakistan_today(self):
+        import epaper_registry
+
+        self.assertIn('mashriqakhbar', epaper_registry.NEWSPAPERS)
+        self.assertIn('pakistantoday', epaper_registry.NEWSPAPERS)
+        self.assertEqual(epaper_registry.NEWSPAPERS['mashriqakhbar']['available_after'], '10:00')
+        self.assertEqual(epaper_registry.NEWSPAPERS['pakistantoday']['script'], 'pakistantoday.py')
+
 
 if __name__ == '__main__':
     unittest.main()

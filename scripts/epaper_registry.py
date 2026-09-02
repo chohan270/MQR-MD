@@ -147,6 +147,13 @@ NEWSPAPERS = {
         "batch": "baqi",
         "available_after": "08:00",
     },
+    "mashriqakhbar": {
+        "display": "Mashriq Akhbar",
+        "script": "mashriqakhbar.py",
+        "mode": "cwd",
+        "batch": "baqi",
+        "available_after": "10:00",
+    },
     "baithak": {
         "display": "Baithak",
         "script": "baithak.py",
@@ -205,6 +212,7 @@ NEWSPAPERS = {
         "script": "pakistantoday.py",
         "mode": "cwd",
         "batch": "baqi",
+        "available_after": "08:00",
     },
     "aaj": {
         "display": "Aaj",
