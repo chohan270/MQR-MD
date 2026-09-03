@@ -58,6 +58,12 @@ function malik_loadPlugins() {
 // TEXT REPLACEMENT & CLEANING CONFIG
 // -----------------------------------------------------------------------------
 const { processAndCleanMessage, buildRegexList } = require('./maliklib/cleaner');
+const OrderedForwardQueue = require('./maliklib/orderedForwardQueue');
+
+const malik_forwardQueue = new OrderedForwardQueue({
+    maxRetries: process.env.AUTOFORWARD_MAX_RETRIES ? Number(process.env.AUTOFORWARD_MAX_RETRIES) : Infinity,
+    retryDelayMs: Number(process.env.AUTOFORWARD_RETRY_DELAY_MS || 1000)
+});
 
 // -----------------------------------------------------------------------------
 // MEDIA TYPE DETECTION (Used by dashboard per-media forwarding switches)
@@ -270,8 +276,16 @@ async function startSession(sessionId) {
     // MESSAGE HANDLER
     // -------------------------------------------------------------------------
     malik_sock.ev.on('messages.upsert', async malik_m => {
-        const malik_msg = malik_m.messages[0];
-        if (!malik_msg.message) return;
+        const incomingMessages = malik_m.messages || [];
+        if (!incomingMessages.length) return;
+
+        for (const malik_msg of incomingMessages) {
+            await handleIncomingMessage(malik_sock, sessionId, malik_msg);
+        }
+    });
+
+    async function handleIncomingMessage(malik_sock, sessionId, malik_msg) {
+        if (!malik_msg?.message) return;
 
         const malik_origin = malik_msg.key.remoteJid;
         const malik_sender = jidNormalizedUser(malik_msg.key.participant || malik_origin);
@@ -307,13 +321,12 @@ async function startSession(sessionId) {
                         }
 
                         for (const targetJid of globalCfg.targetJids) {
-                            try {
-                                await malik_sock.relayMessage(targetJid, relayMsg, {
-                                    messageId: malik_sock.generateMessageTag()
+                            malik_forwardQueue.enqueue(targetJid, relayMsg, (message) => {
+                                const activeSock = sessions.get(sessionId)?.sock || malik_sock;
+                                return activeSock.relayMessage(targetJid, message, {
+                                    messageId: activeSock.generateMessageTag()
                                 });
-                            } catch (err) {
-                                console.error(`[GLOBAL-FORWARD] Failed for ${targetJid}:`, err.message);
-                            }
+                            });
                         }
                     }
                 }
@@ -332,13 +345,12 @@ async function startSession(sessionId) {
                     if (relayMsg.viewOnceMessage) relayMsg = relayMsg.viewOnceMessage.message;
 
                     for (const targetJid of groupSettings.autoForwardTargets) {
-                        try {
-                            await malik_sock.relayMessage(targetJid, relayMsg, {
-                                messageId: malik_sock.generateMessageTag()
+                        malik_forwardQueue.enqueue(targetJid, relayMsg, (message) => {
+                            const activeSock = sessions.get(sessionId)?.sock || malik_sock;
+                            return activeSock.relayMessage(targetJid, message, {
+                                messageId: activeSock.generateMessageTag()
                             });
-                        } catch (err) {
-                            console.error(`[AUTO-FORWARD] Failed for ${targetJid}:`, err.message);
-                        }
+                        });
                     }
                 }
             } catch (err) { }
@@ -386,7 +398,7 @@ async function startSession(sessionId) {
                 }
             }
         }
-    });
+    }
 }
 
 // -----------------------------------------------------------------------------
