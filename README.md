@@ -1,6 +1,6 @@
-# 🗞️ Malik MD
+# 🗞️ MQR MD
 
-Malik Newspapers is a WhatsApp e-paper automation bot built for fast, tidy and dependable newspaper delivery. It collects the day’s editions, turns pages into PDFs, applies the project watermark and sends them to selected WhatsApp groups.
+MQR MD is a WhatsApp e-paper automation bot built for fast, tidy and dependable newspaper delivery. It collects the day’s editions, turns pages into PDFs, applies the project watermark and sends them to selected WhatsApp groups.
 
 This is an operations-focused bot: automatic delivery can be paused at any time, individual papers can be requested manually, and a paper that has already been sent stays locked until the owner deliberately clears its record.
 

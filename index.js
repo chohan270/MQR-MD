@@ -1,7 +1,7 @@
 /**
- * ⚡ MALIK MD AUTOFORWARD BOT ⚡
+ * ⚡ MQR MD AUTOFORWARD BOT ⚡
  * Main Entry Point
- * Developed by Mr Malik (ixxmalik)
+ * MQR MD WhatsApp automation
  */
 require('dotenv').config();
 const {

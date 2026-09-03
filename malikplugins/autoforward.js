@@ -1,7 +1,7 @@
 /**
- * ⚡ MALIK MD AUTOFORWARD BOT ⚡
+ * ⚡ MQR MD AUTOFORWARD BOT ⚡
  * Auto-Forward Command with Global Support
- * Developed by Mr Malik (ixxmalik)
+ * MQR MD WhatsApp automation
  */
 const { malik_updateGroupSettings, malik_getGroupSettings, malik_getGlobalAutoForward, malik_updateGlobalAutoForward, malik_getEpaperConfig, malik_updateEpaperConfig, malik_clearEpaperSentToday } = require('../maliklib/database');
 const epaperEngine = require('../maliklib/epaperEngine');

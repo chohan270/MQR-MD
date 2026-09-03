@@ -1,7 +1,7 @@
 /**
- * ⚡ MALIK MD AUTOFORWARD BOT ⚡
+ * ⚡ MQR MD AUTOFORWARD BOT ⚡
  * Cleaner Utility
- * Developed by Mr Malik (ixxmalik)
+ * MQR MD WhatsApp automation
  */
 function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 

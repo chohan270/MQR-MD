@@ -1,4 +1,4 @@
-# MALIK-MD-V7 Libs (The Engine Room) ⚙️
+# MQR MD V7 Libs (The Engine Room) ⚙️
 
 This is where the magic (and the hard work) happens. While the plugins carry out the commands, the files in `maliklib` are what make them possible. This folder contains all the shared functions, database logic, and specialized scrapers that keep the bot running smoothly.
 

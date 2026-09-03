@@ -1,5 +1,5 @@
 /**
- * ⚡ MALIK MD AUTOFORWARD BOT — EPAPER AUTOMATION ENGINE ⚡
+ * ⚡ MQR MD AUTOFORWARD BOT — EPAPER AUTOMATION ENGINE ⚡
  *
  * Pipeline (per requirements):
  *   Express : 3:00 AM (Sunday 5:30 AM) -> download -> watermark -> send -> delete /tmp

@@ -1,7 +1,7 @@
 /**
- * ⚡ MALIK MD AUTOFORWARD BOT ⚡
+ * ⚡ MQR MD AUTOFORWARD BOT ⚡
  * Uptime Command
- * Developed by Mr Malik (ixxmalik)
+ * MQR MD WhatsApp automation
  */
 module.exports = {
     name: 'uptime',
@@ -14,7 +14,7 @@ module.exports = {
         const minutes = Math.floor((uptimeSeconds % 3600) / 60);
         const seconds = Math.floor(uptimeSeconds % 60);
 
-        let uptimeStr = `╭━━━〔 ⏱️ *SYSTEM UPTIME* 〕━━━╮\n┃ 🤖 *MALIK MD IS ONLINE*\n┃ `;
+        let uptimeStr = `╭━━━〔 ⏱️ *SYSTEM UPTIME* 〕━━━╮\n┃ 🤖 *MQR MD IS ONLINE*\n┃ `;
         if (days > 0) uptimeStr += `📅 ${days}d `;
         if (hours > 0) uptimeStr += `🕒 ${hours}h `;
         if (minutes > 0) uptimeStr += `⏳ ${minutes}m `;

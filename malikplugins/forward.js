@@ -1,7 +1,7 @@
 /**
- * ⚡ MALIK MD AUTOFORWARD BOT ⚡
+ * ⚡ MQR MD AUTOFORWARD BOT ⚡
  * Forward Command
- * Developed by Mr Malik (ixxmalik)
+ * MQR MD WhatsApp automation
  */
 module.exports = {
     name: 'forward',

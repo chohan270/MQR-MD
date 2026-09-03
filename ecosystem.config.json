@@ -1,7 +1,7 @@
 {
     "apps": [
         {
-            "name": "malik-md-v7",
+            "name": "mqr-md",
             "script": "index.js",
             "node_args": "--expose-gc",
             "watch": false,

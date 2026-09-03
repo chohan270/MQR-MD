@@ -1,4 +1,4 @@
-# Malik MD — Epaper Auto-Forward WhatsApp Bot (Heroku)
+# MQR MD — Epaper Auto-Forward WhatsApp Bot (Heroku)
 
 Ye repo aapka mojooda Baileys bot hai + **poora automated Epaper system**
 add kiya gaya hai (26 newspapers: Express, Jang, The News, Dawn, Nawaiwaqt,
