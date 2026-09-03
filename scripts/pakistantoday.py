@@ -113,6 +113,66 @@ def get_document_id(slug):
     return None
 
 
+def build_article_url(code, dt):
+    """New Pakistan Today e-paper article URLs: /YYYY/MM/DD/epaperYY-MM-D-code"""
+    yyyy = dt.strftime("%Y")
+    mm = dt.strftime("%m")
+    dd = dt.strftime("%d")
+    yy = dt.strftime("%y")
+    candidates = [
+        f"https://www.pakistantoday.com.pk/{yyyy}/{mm}/{dd}/epaper{yy}-{mm}-{dd}-{code}",
+        f"https://www.pakistantoday.com.pk/{yyyy}/{mm}/{dd}/epaper{yy}-{int(mm)}-{int(dd)}-{code}",
+        f"https://www.pakistantoday.com.pk/{yyyy}/{int(mm)}/{int(dd)}/epaper{yy}-{mm}-{dd}-{code}",
+        f"https://www.pakistantoday.com.pk/{yyyy}/{mm}/{dd}/epaper{yy}-{mm}-{int(dd)}-{code}",
+    ]
+    return candidates
+
+
+def find_article_images(html):
+    """Pakistan Today's newer article pages expose a direct preview image instead of Issuu pages."""
+    found = []
+    for attr in ["src", "data-src", "data-lazy-src"]:
+        for match in re.findall(rf"{attr}=['\"]([^'\"\s>]+)['\"]", html, re.I):
+            if "/uploads/" in match.lower() or "thumbs" in match.lower():
+                found.append(match)
+    for match in re.findall(r'https?://[^\"\'\s>]+(?:uploads|thumbs)[^\"\'\s>]+\.(?:jpg|jpeg|png|webp)', html, re.I):
+        found.append(match)
+    unique = []
+    for item in found:
+        cleaned = item.replace('\\/', '/').replace(' ', '%20')
+        if cleaned.startswith('//'):
+            cleaned = 'https:' + cleaned
+        if cleaned not in unique:
+            unique.append(cleaned)
+    return unique
+
+
+def download_article_fallback(name, code, dt):
+    """Fallback: Pakistan Today has moved from Issuu to article-based e-paper pages."""
+    candidate_urls = build_article_url(code, dt)
+    log(f"    [{name}] article fallback check: {candidate_urls[0]}")
+
+    for page_url in candidate_urls:
+        try:
+            resp = requests.get(page_url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200:
+                continue
+            html = resp.text
+            images = find_article_images(html)
+            if not images:
+                continue
+            for image_url in images[:10]:
+                content = download_image(image_url)
+                if content is None:
+                    continue
+                log(f"    [{name}] fallback image URL found: {image_url}")
+                return [content]
+        except Exception as e:
+            log(f"    [{name}] fallback fetch error: {e}")
+            continue
+    return []
+
+
 def download_image(url):
     for attempt in range(1, RETRY_PER_PAGE + 1):
         try:
@@ -164,24 +224,27 @@ def download_edition(name, code, dt):
             slug = alt_slug
 
     if not doc_id:
-        log(f"==> {name}: document nahi mila is date ke liye.")
-        return False
+        log(f"==> {name}: Issuu document nahi mila, article fallback try kar rahe hain...")
+        images = download_article_fallback(name, code, dt)
+        if not images:
+            log(f"==> {name}: koi page download nahi hua.")
+            return False
+    else:
+        log(f"    document ID: {doc_id}")
 
-    log(f"    document ID: {doc_id}")
+        images = []
+        for page in range(1, MAX_PAGES + 1):
+            url = f"https://image.isu.pub/{doc_id}/jpg/page_{page}.jpg"
+            content = download_image(url)
+            if content is None:
+                log(f"    [{name}] page {page}: nahi mila -- stop")
+                break
+            images.append(content)
+            log(f"    [{name}] page {page}: OK ({len(content)//1024} KB)")
 
-    images = []
-    for page in range(1, MAX_PAGES + 1):
-        url = f"https://image.isu.pub/{doc_id}/jpg/page_{page}.jpg"
-        content = download_image(url)
-        if content is None:
-            log(f"    [{name}] page {page}: nahi mila -- stop")
-            break
-        images.append(content)
-        log(f"    [{name}] page {page}: OK ({len(content)//1024} KB)")
-
-    if not images:
-        log(f"==> {name}: koi page download nahi hua.")
-        return False
+        if not images:
+            log(f"==> {name}: koi page download nahi hua.")
+            return False
 
     # ---- PDF banao (memory-safe: JPEG bytes seedha PDF mein wrap hote
     # hain, poori list decode karke RAM mein nahi rakhi jaati) ----
