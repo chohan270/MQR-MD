@@ -9,23 +9,29 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --whatsapp: #25d366;
-            --whatsapp-dark: #128C7E;
-            --whatsapp-gradient: linear-gradient(145deg, #25d366, #128C7E);
-            --channel-gradient: linear-gradient(145deg, #25d366, #128C7E, #075e54);
+            --whatsapp: #43e6b0;
+            --whatsapp-dark: #159a91;
+            --whatsapp-gradient: linear-gradient(145deg, #43e6b0, #159a91);
+            --channel-gradient: linear-gradient(145deg, #43e6b0, #159a91, #1677a8);
             --github: #24292e;
-            --owner-gradient: linear-gradient(145deg, #075e54, #128C7E, #25d366);
-            --bg-dark: #0b1a1e;
-            --bg-card: rgba(18, 34, 39, 0.95);
-            --text-primary: #e9f1f2;
-            --text-secondary: #8aa3a6;
-            --accent: #a8e6cf;
-            --border: rgba(37, 211, 102, 0.2);
+            --owner-gradient: linear-gradient(145deg, #ff8066, #e05279, #8b5cf6);
+            --bg-dark: #101827;
+            --bg-card: rgba(20, 30, 47, 0.94);
+            --text-primary: #f4f7fb;
+            --text-secondary: #9eafc5;
+            --accent: #ffd166;
+            --border: rgba(111, 224, 213, 0.24);
             --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-dark);
+            background-color: var(--bg-dark);
+            background-image:
+                linear-gradient(135deg, rgba(67, 230, 176, 0.08) 25%, transparent 25%),
+                linear-gradient(315deg, rgba(255, 128, 102, 0.07) 25%, transparent 25%),
+                radial-gradient(circle at 15% 10%, rgba(22, 119, 168, 0.28), transparent 32%),
+                radial-gradient(circle at 90% 85%, rgba(224, 82, 121, 0.2), transparent 30%);
+            background-size: 42px 42px, 42px 42px, auto, auto;
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;
@@ -40,7 +46,8 @@
             position: fixed;
             width: 200%;
             height: 200%;
-            background: radial-gradient(circle, rgba(37, 211, 102, 0.05) 0%, transparent 70%);
+            background: linear-gradient(90deg, transparent 49%, rgba(255,255,255,0.025) 50%, transparent 51%);
+            background-size: 52px 52px;
             animation: pulse 20s infinite;
             pointer-events: none;
         }
@@ -50,11 +57,11 @@
         }
         .container { max-width: 500px; width: 100%; position: relative; z-index: 10; }
         .card {
-            background: var(--bg-card);
+            background: linear-gradient(155deg, rgba(25, 39, 60, 0.97), rgba(16, 25, 41, 0.95));
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            border-radius: 32px;
+            border-radius: 24px;
             padding: 24px 20px;
             box-shadow: var(--shadow);
         }
@@ -62,16 +69,16 @@
         .logo-area { display: flex; align-items: center; gap: 12px; }
         .logo-icon {
             width: 48px; height: 48px;
-            background: var(--whatsapp-gradient);
+            background: linear-gradient(145deg, #ff8066, #e05279 52%, #8b5cf6);
             border-radius: 14px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 28px; color: white;
-            box-shadow: 0 8px 16px rgba(37, 211, 102, 0.2);
+            font-size: 26px; color: white;
+            box-shadow: 0 8px 18px rgba(224, 82, 121, 0.28);
         }
         .logo-text h1 {
             font-size: 22px; font-weight: 800;
-            background: linear-gradient(to right, #fff, var(--accent));
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background: linear-gradient(to right, #fff, #ffd166, #43e6b0);
+            background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             margin-bottom: 2px; letter-spacing: -0.5px;
         }
         .logo-text span { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
@@ -188,7 +195,7 @@
             width: 100%; padding: 14px; border-radius: 16px;
             background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border);
             color: white; font-family: 'Inter', monospace; font-size: 13px;
-            transition: all 0.2s ease; -webkit-appearance: none;
+            transition: all 0.2s ease; appearance: none; -webkit-appearance: none;
         }
         .form-control:focus { outline: none; border-color: var(--whatsapp); background: rgba(0, 0, 0, 0.5); }
         .btn {
@@ -264,7 +271,7 @@
             <!-- Header -->
             <div class="header">
                 <div class="logo-area">
-                    <div class="logo-icon"><i class="fab fa-whatsapp"></i></div>
+                    <div class="logo-icon" role="img" aria-label="MQR MD newspaper">📰</div>
                     <div class="logo-text">
                         <h1>MQR MD</h1>
                         <span>MULTI-DEVICE</span>
