@@ -22,24 +22,15 @@ Usage:
 
 import os
 import io
-import gc
 import time
 import datetime
 import re
 import requests
-import img2pdf
 from PIL import Image
 
 # ===================== CONFIG =====================
 
-# Relative folder (creates inside wherever the script is run from). This
-# works both for manual Termux runs AND for the automated scheduler, which
-# runs each "cwd" script inside its own dedicated temp working directory
-# and recursively searches that directory for the resulting *.pdf files --
-# an absolute Android-only path (e.g. /storage/emulated/0/DCIM/...) would
-# be invisible to that search and the script's PDFs would never get
-# picked up by the auto-forward system.
-OUTPUT_FOLDER = "PakistanToday_Epaper_PDFs"
+OUTPUT_FOLDER = "/storage/emulated/0/DCIM/PakistanToday_Epaper_PDFs"
 
 # None = aaj ki date. Ya manually "DD-MM-YYYY" format, jaise "20-08-2026"
 TARGET_DATE = None
@@ -113,66 +104,6 @@ def get_document_id(slug):
     return None
 
 
-def build_article_url(code, dt):
-    """New Pakistan Today e-paper article URLs: /YYYY/MM/DD/epaperYY-MM-D-code"""
-    yyyy = dt.strftime("%Y")
-    mm = dt.strftime("%m")
-    dd = dt.strftime("%d")
-    yy = dt.strftime("%y")
-    candidates = [
-        f"https://www.pakistantoday.com.pk/{yyyy}/{mm}/{dd}/epaper{yy}-{mm}-{dd}-{code}",
-        f"https://www.pakistantoday.com.pk/{yyyy}/{mm}/{dd}/epaper{yy}-{int(mm)}-{int(dd)}-{code}",
-        f"https://www.pakistantoday.com.pk/{yyyy}/{int(mm)}/{int(dd)}/epaper{yy}-{mm}-{dd}-{code}",
-        f"https://www.pakistantoday.com.pk/{yyyy}/{mm}/{dd}/epaper{yy}-{mm}-{int(dd)}-{code}",
-    ]
-    return candidates
-
-
-def find_article_images(html):
-    """Pakistan Today's newer article pages expose a direct preview image instead of Issuu pages."""
-    found = []
-    for attr in ["src", "data-src", "data-lazy-src"]:
-        for match in re.findall(rf"{attr}=['\"]([^'\"\s>]+)['\"]", html, re.I):
-            if "/uploads/" in match.lower() or "thumbs" in match.lower():
-                found.append(match)
-    for match in re.findall(r'https?://[^\"\'\s>]+(?:uploads|thumbs)[^\"\'\s>]+\.(?:jpg|jpeg|png|webp)', html, re.I):
-        found.append(match)
-    unique = []
-    for item in found:
-        cleaned = item.replace('\\/', '/').replace(' ', '%20')
-        if cleaned.startswith('//'):
-            cleaned = 'https:' + cleaned
-        if cleaned not in unique:
-            unique.append(cleaned)
-    return unique
-
-
-def download_article_fallback(name, code, dt):
-    """Fallback: Pakistan Today has moved from Issuu to article-based e-paper pages."""
-    candidate_urls = build_article_url(code, dt)
-    log(f"    [{name}] article fallback check: {candidate_urls[0]}")
-
-    for page_url in candidate_urls:
-        try:
-            resp = requests.get(page_url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-            if resp.status_code != 200:
-                continue
-            html = resp.text
-            images = find_article_images(html)
-            if not images:
-                continue
-            for image_url in images[:10]:
-                content = download_image(image_url)
-                if content is None:
-                    continue
-                log(f"    [{name}] fallback image URL found: {image_url}")
-                return [content]
-        except Exception as e:
-            log(f"    [{name}] fallback fetch error: {e}")
-            continue
-    return []
-
-
 def download_image(url):
     for attempt in range(1, RETRY_PER_PAGE + 1):
         try:
@@ -186,22 +117,6 @@ def download_image(url):
         if attempt < RETRY_PER_PAGE:
             time.sleep(1)
     return None
-
-
-def _page_to_jpeg_bytes(raw_bytes):
-    """Ek dafa mein sirf EK page RAM mein decode hota hai (memory-safe)."""
-    try:
-        img = Image.open(io.BytesIO(raw_bytes))
-        if img.format == "JPEG" and img.mode == "RGB":
-            img.close()
-            return raw_bytes
-        img = img.convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=92)
-        img.close()
-        return buf.getvalue()
-    except Exception:
-        return raw_bytes
 
 
 def download_edition(name, code, dt):
@@ -224,42 +139,38 @@ def download_edition(name, code, dt):
             slug = alt_slug
 
     if not doc_id:
-        log(f"==> {name}: Issuu document nahi mila, article fallback try kar rahe hain...")
-        images = download_article_fallback(name, code, dt)
-        if not images:
-            log(f"==> {name}: koi page download nahi hua.")
-            return False
-    else:
-        log(f"    document ID: {doc_id}")
+        log(f"==> {name}: document nahi mila is date ke liye.")
+        return False
 
-        images = []
-        for page in range(1, MAX_PAGES + 1):
-            url = f"https://image.isu.pub/{doc_id}/jpg/page_{page}.jpg"
-            content = download_image(url)
-            if content is None:
-                log(f"    [{name}] page {page}: nahi mila -- stop")
-                break
-            images.append(content)
-            log(f"    [{name}] page {page}: OK ({len(content)//1024} KB)")
+    log(f"    document ID: {doc_id}")
 
-        if not images:
-            log(f"==> {name}: koi page download nahi hua.")
-            return False
+    images = []
+    for page in range(1, MAX_PAGES + 1):
+        url = f"https://image.isu.pub/{doc_id}/jpg/page_{page}.jpg"
+        content = download_image(url)
+        if content is None:
+            log(f"    [{name}] page {page}: nahi mila -- stop")
+            break
+        images.append(content)
+        log(f"    [{name}] page {page}: OK ({len(content)//1024} KB)")
 
-    # ---- PDF banao (memory-safe: JPEG bytes seedha PDF mein wrap hote
-    # hain, poori list decode karke RAM mein nahi rakhi jaati) ----
-    jpeg_pages = [_page_to_jpeg_bytes(raw) for raw in images]
+    if not images:
+        log(f"==> {name}: koi page download nahi hua.")
+        return False
+
+    # ---- PDF banao ----
+    pil_images = []
+    for raw in images:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        pil_images.append(img)
 
     day_no = str(int(dt.strftime("%d")))
     mon_title = dt.strftime("%b")
     out_name = f"PakistanToday {name} {day_no}{mon_title}.pdf"
     out_path = os.path.join(OUTPUT_FOLDER, out_name)
 
-    with open(out_path, "wb") as f:
-        f.write(img2pdf.convert(jpeg_pages))
-    log(f"==> {name}: ✅ PDF ban gaya -- {out_name} ({len(jpeg_pages)} pages)")
-    jpeg_pages = None
-    gc.collect()
+    pil_images[0].save(out_path, save_all=True, append_images=pil_images[1:])
+    log(f"==> {name}: ✅ PDF ban gaya -- {out_name} ({len(pil_images)} pages)")
     return True
 
 

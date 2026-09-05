@@ -1,34 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Roznama Sahafat Epaper (sahafat.com.pk) Auto Downloader
-===========================================================
-Editions (confirmed, seedha site se): Islamabad, Lahore, Karachi,
-Peshawar, Muzaffarabad. Default mein sab 5 chalti hain -- agar sirf
-kuch chahiye to --editions flag use karein (misaal neeche).
+Daily Sahafat E-Paper Downloader (5 Editions -> PDF)
+========================================================================
+Malik Qasim Raza Chohan
 
-SITE PATTERN (confirmed, seedha URL se):
-    Viewer page:
-      http://sahafat.com.pk/epaper%20<folder>/<YYYY>/<mon>/<D>/<viewer_file>
-    Page images (isi page ke andar seedhi milti hain):
-      http://sahafat.com.pk/epaper%20<folder>/<YYYY>/<mon>/<D>/<prefix><page>.jpg
+PURANI SCRIPT KYUN FAIL HO RAHI THI:
+-------------------------------------
+Site ka URL structure har edition ke liye ALAG hai -- purani script shayad
+sab editions ke liye SAME folder/prefix pattern try kar rahi thi, jabke
+har edition ka apna folder aur image-prefix hai:
 
-    <folder> aur <prefix> har edition ke alag hain:
-        Islamabad     -> folder "isb"     prefix "i"
-        Lahore        -> folder "lahore"  prefix "l"
-        Karachi       -> folder "karachi" prefix "k"
-        Peshawar      -> folder "pew"     prefix "p"
-        Muzaffarabad  -> folder "muz"     prefix "m"
+    Islamabad    -> folder: "epaper isb"      prefix: i   (i1.jpg, i2.jpg...)
+    Lahore       -> folder: "epaper lahore"   prefix: l   (l1.jpg, l2.jpg...)
+    Karachi      -> folder: "epaper karachi"  prefix: k   (k1.jpg, k2.jpg...)
+    Peshawar     -> folder: "epaper pew"      prefix: p   (p1.jpg, p2.jpg...)
+    Muzaffarabad -> folder: "epaper muz"      prefix: m   (m1.jpg, m2.jpg...)
 
-    <mon>  = 3-letter lowercase month (jan, feb, mar ... jul, aug ...)
-    <D>    = din bina leading zero ke (17, 1, 9, 25 ...)
-    <page> = page number bina leading zero ke (1, 2, 3 ... 12 ...)
+Full image URL pattern:
+    https://sahafat.com.pk/{folder}/{yyyy}/{mon}/{dd}/{prefix}{page}.jpg
+    (mon = 3-letter lowercase English month, e.g. "aug")
 
-Script kisi HTML listing pe depend nahi karti -- seedha page 1, 2,
-3... try karti hai jab tak DO consecutive pages na milein (isse maan
-liya jata hai ke edition khatam ho gaya).
-
-Requirements:
+Requirements (Termux mein ek dafa install karein):
     pip install requests pillow
 
 Usage:
@@ -51,32 +44,26 @@ import argparse
 import gc
 import concurrent.futures
 import io
-import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
-
 try:
     import requests
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
 except ImportError:
     sys.exit("requests missing hai. Pehle chalayein: pip install requests")
-
 try:
     from PIL import Image, ImageFile
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 except ImportError:
     sys.exit("Pillow missing hai. Pehle chalayein: pip install pillow")
-
 try:
     import img2pdf
 except ImportError:
     sys.exit("img2pdf missing hai. Pehle chalayein: pip install img2pdf")
 
-
 BASE = "http://sahafat.com.pk"
-
 # name -> (folder, image_prefix)
 EDITIONS = {
     "Islamabad": ("isb", "i"),
@@ -85,12 +72,10 @@ EDITIONS = {
     "Peshawar": ("pew", "p"),
     "Muzaffarabad": ("muz", "m"),
 }
-
 MONTH_ABBR = [
     "jan", "feb", "mar", "apr", "may", "jun",
     "jul", "aug", "sep", "oct", "nov", "dec",
 ]
-
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -99,14 +84,12 @@ HEADERS = {
     "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
     "Connection": "keep-alive",
 }
-
 IMAGE_RETRIES = 4
 RETRY_SLEEP = 1.5
 REQUEST_TIMEOUT = 40
 THREADS_PER_EDITION = 4
 MAX_PAGES = 30
 STOP_AFTER_CONSECUTIVE_MISSING = 2
-
 PKT = timezone(timedelta(hours=5))
 
 
@@ -278,7 +261,7 @@ def main():
         "--date",
         default=None,
         metavar="DD-MM-YYYY",
-        help="Manual date (default: aaj, PKT). Misaal: --date 17-07-2026",
+        help="Manual date (default: aaj, PKT). Misaal: 17-07-2026",
     )
     args = parser.parse_args()
 
