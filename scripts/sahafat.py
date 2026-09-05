@@ -115,7 +115,7 @@ def make_session():
 def build_page_url(folder, prefix, date_obj, page_num):
     year = date_obj.year
     mon = MONTH_ABBR[date_obj.month - 1]
-    day = date_obj.day
+    day = f"{date_obj.day:02d}"
     return f"{BASE}/epaper%20{folder}/{year}/{mon}/{day}/{prefix}{page_num}.jpg"
 
 
