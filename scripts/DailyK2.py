@@ -40,7 +40,7 @@ from PIL import Image
 BASE_URL = "https://epaper.dailyk2.com"
 
 # Daily K2 PDFs yahan save hongi
-OUTPUT_FOLDER = "/sdcard/Documents"
+OUTPUT_FOLDER = "DailyK2_Epaper_PDFs"
 
 # None = aaj ki date
 #
