@@ -1,4 +1,4 @@
-# Malik MD — Epaper Auto-Forward WhatsApp Bot (Heroku)
+# MQR MD — Epaper Auto-Forward WhatsApp Bot (Heroku)
 
 Ye repo aapka mojooda Baileys bot hai + **poora automated Epaper system**
 add kiya gaya hai (26 newspapers: Express, Jang, The News, Dawn, Nawaiwaqt,
@@ -41,7 +41,8 @@ karta hai, jab tak maxRetries (default 4) khatam na ho.
 | 5:30 AM (Sunday only) | Express (Sunday ko baad mein) |
 | 4:30 AM (daily) | Early baqi newspapers download + watermark; late papers apne publication window tak hold |
 | 5:00 AM (daily) | Baqi 25 newspapers: jo ban chuki unko send + delete |
-| 8:00 AM ke baad | Mashriq, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain: aaj ki copy available hone par retry/send |
+| 8:00 AM ke baad | Mashriq, Pakistan Today, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain: aaj ki copy available hone par retry/send |
+| 10:00 AM ke baad | Mashriq Akhbar: aaj ki copy available hone par retry/send |
 | 3:00 PM ke baad | Kawish: aaj ki copy available hone par retry/send |
 | Har 15 min, 3AM–11:45PM | Sirf FAILED newspapers dobara try — **koi attempt-limit nahi**, lekin har paper apne publication window se pehle run nahi hota |
 

@@ -1,7 +1,7 @@
 /**
- * ⚡ MALIK MD AUTOFORWARD BOT ⚡
+ * ⚡ MQR MD AUTOFORWARD BOT ⚡
  * Ping Command
- * Developed by Mr Malik (ixxmalik)
+ * MQR MD WhatsApp automation
  */
 module.exports = {
     name: 'ping',

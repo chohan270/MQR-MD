@@ -1,5 +1,5 @@
 /**
- * Malik command hub.
+ * MQR MD command hub.
  */
 module.exports = {
     name: 'menu',
@@ -20,7 +20,7 @@ module.exports = {
             categories[category].push(plugin);
         }
 
-        let menuText = `╭━━━〔 ✨ *MALIK COMMANDS* ✨ 〕━━━╮\n`;
+        let menuText = `╭━━━〔 ✨ *MQR MD COMMANDS* ✨ 〕━━━╮\n`;
         menuText += `┃ 👤 @${malik_sender.split('@')[0]}\n`;
         menuText += `┃ ⚙️ Prefix: .  •  📚 ${handledCommands.size} commands\n`;
         menuText += `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n`;
@@ -33,7 +33,7 @@ module.exports = {
             menuText += `┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n`;
         }
         
-        menuText += `🌟 *Malik MD*  |  simple, sharp, ready`;
+        menuText += `🌟 *MQR MD*  |  simple, sharp, ready`;
 
         await malik_sock.sendMessage(malik_origin, { 
             text: menuText,

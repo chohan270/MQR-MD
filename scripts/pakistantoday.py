@@ -22,24 +22,15 @@ Usage:
 
 import os
 import io
-import gc
 import time
 import datetime
 import re
 import requests
-import img2pdf
 from PIL import Image
 
 # ===================== CONFIG =====================
 
-# Relative folder (creates inside wherever the script is run from). This
-# works both for manual Termux runs AND for the automated scheduler, which
-# runs each "cwd" script inside its own dedicated temp working directory
-# and recursively searches that directory for the resulting *.pdf files --
-# an absolute Android-only path (e.g. /storage/emulated/0/DCIM/...) would
-# be invisible to that search and the script's PDFs would never get
-# picked up by the auto-forward system.
-OUTPUT_FOLDER = "PakistanToday_Epaper_PDFs"
+OUTPUT_FOLDER = "/storage/emulated/0/DCIM/PakistanToday_Epaper_PDFs"
 
 # None = aaj ki date. Ya manually "DD-MM-YYYY" format, jaise "20-08-2026"
 TARGET_DATE = None
@@ -128,22 +119,6 @@ def download_image(url):
     return None
 
 
-def _page_to_jpeg_bytes(raw_bytes):
-    """Ek dafa mein sirf EK page RAM mein decode hota hai (memory-safe)."""
-    try:
-        img = Image.open(io.BytesIO(raw_bytes))
-        if img.format == "JPEG" and img.mode == "RGB":
-            img.close()
-            return raw_bytes
-        img = img.convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=92)
-        img.close()
-        return buf.getvalue()
-    except Exception:
-        return raw_bytes
-
-
 def download_edition(name, code, dt):
     date_str = dt.strftime("%d-%m-%Y")
     slug = build_doc_slug(code, dt)
@@ -183,20 +158,19 @@ def download_edition(name, code, dt):
         log(f"==> {name}: koi page download nahi hua.")
         return False
 
-    # ---- PDF banao (memory-safe: JPEG bytes seedha PDF mein wrap hote
-    # hain, poori list decode karke RAM mein nahi rakhi jaati) ----
-    jpeg_pages = [_page_to_jpeg_bytes(raw) for raw in images]
+    # ---- PDF banao ----
+    pil_images = []
+    for raw in images:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        pil_images.append(img)
 
     day_no = str(int(dt.strftime("%d")))
     mon_title = dt.strftime("%b")
     out_name = f"PakistanToday {name} {day_no}{mon_title}.pdf"
     out_path = os.path.join(OUTPUT_FOLDER, out_name)
 
-    with open(out_path, "wb") as f:
-        f.write(img2pdf.convert(jpeg_pages))
-    log(f"==> {name}: ✅ PDF ban gaya -- {out_name} ({len(jpeg_pages)} pages)")
-    jpeg_pages = None
-    gc.collect()
+    pil_images[0].save(out_path, save_all=True, append_images=pil_images[1:])
+    log(f"==> {name}: ✅ PDF ban gaya -- {out_name} ({len(pil_images)} pages)")
     return True
 
 

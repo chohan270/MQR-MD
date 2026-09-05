@@ -1,7 +1,7 @@
 {
-  "name": "malik-md-autoforward-bot",
+  "name": "mqr-md-autoforward-bot",
   "version": "1.0.0",
-  "description": "Powerful, Light & Stable WhatsApp Bot by Mr Malik",
+  "description": "Powerful, Light and Stable WhatsApp Bot by MQR MD",
   "main": "index.js",
   "scripts": {
     "start": "node --expose-gc index.js",

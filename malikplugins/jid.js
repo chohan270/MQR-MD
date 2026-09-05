@@ -1,7 +1,7 @@
 /**
- * ⚡ MALIK MD AUTOFORWARD BOT ⚡
+ * ⚡ MQR MD AUTOFORWARD BOT ⚡
  * JID Utility
- * Developed by Mr Malik (ixxmalik)
+ * MQR MD WhatsApp automation
  */
 module.exports = {
     name: 'jid',

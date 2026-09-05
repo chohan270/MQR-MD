@@ -76,6 +76,9 @@ WHITESPACE_ROW_RATIO = 0.90      # ek row "white" tab manegi jab uske itne % pix
 WHITESPACE_BRIGHTNESS = 235      # 0-255, isse upar wala pixel "white" mana jayega
 WHITESPACE_MIN_PERCENT = 1.0     # white band agar page height ke itne % se zyada ho, to "whitespace hai"
 
+# Group branding page appended to the end of each newspaper PDF.
+# This file is deliberately excluded from normal processing so it is not
+# treated as a newspaper input and is only used as the final branded tail.
 EXTRA_LAST_PDF = os.path.join(_ASSETS_DIR, "pbk.pdf")
 
 # ===================================================
@@ -213,16 +216,17 @@ def process_pdf(pdf_path, output_path):
     except Exception as e:
         print(f"  ⚠️ Page 1 watermark skip: {e}")
         watermarked_front, front_img = None, None
-    if watermarked_front is not None:
-        writer.add_page(watermarked_front)
-        print("  ✅ Page 1 (front page) watermark ho gaya")
-    else:
-        writer.add_page(reader.pages[0])
-        print("  ⚠️ Page 1 mein image nahi mili, watermark skip (as-is copy)")
-        front_img = None
-
-    for i in range(1, len(reader.pages)):
-        writer.add_page(reader.pages[i])
+    for idx, page in enumerate(reader.pages):
+        if idx == 0:
+            if watermarked_front is not None:
+                writer.add_page(watermarked_front)
+                print("  ✅ Page 1 (front page) watermark ho gaya")
+            else:
+                writer.add_page(page)
+                print("  ⚠️ Page 1 mein image nahi mili, watermark skip (as-is copy)")
+                front_img = None
+            continue
+        writer.add_page(page)
 
     if EXTRA_LAST_PDF and os.path.exists(EXTRA_LAST_PDF):
         for p in PdfReader(EXTRA_LAST_PDF).pages:
@@ -252,9 +256,10 @@ if __name__ == "__main__":
     if not INPUT_PATH:
         print("ℹ️  Standalone mode: set EPAPER_WM_INPUT env var to a folder or a single PDF.")
     elif os.path.isdir(INPUT_PATH):
+        brand_name = os.path.basename(EXTRA_LAST_PDF).lower() if EXTRA_LAST_PDF else ""
         pdfs = [
             f for f in os.listdir(INPUT_PATH)
-            if f.lower().endswith(".pdf") and f.lower() != "pbk.pdf"
+            if f.lower().endswith(".pdf") and f.lower() != brand_name
         ]
         if not pdfs:
             print(f"❌ '{INPUT_PATH}' folder mein koi PDF nahi mili")
