@@ -30,7 +30,7 @@ from PIL import Image
 
 # ===================== CONFIG =====================
 
-OUTPUT_FOLDER = "/storage/emulated/0/DCIM/PakistanToday_Epaper_PDFs"
+OUTPUT_FOLDER = "PakistanToday_Epaper_PDFs"
 
 # None = aaj ki date. Ya manually "DD-MM-YYYY" format, jaise "20-08-2026"
 TARGET_DATE = None
