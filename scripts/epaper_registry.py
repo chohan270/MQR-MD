@@ -221,13 +221,6 @@ NEWSPAPERS = {
         "batch": "baqi",
         "available_after": "08:00",
     },
-    "businessrecorder": {
-        "display": "Business Recorder",
-        "script": "businessrecorder.py",
-        "mode": "cwd",
-        "batch": "baqi",
-        "available_after": "08:00",
-    },
     "aaj": {
         "display": "Aaj",
         "script": "aaj.py",
