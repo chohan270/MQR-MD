@@ -86,6 +86,16 @@ class EpaperRulesTest(unittest.TestCase):
         self.assertEqual(epaper_registry.NEWSPAPERS['mashriqakhbar']['available_after'], '10:00')
         self.assertEqual(epaper_registry.NEWSPAPERS['pakistantoday']['script'], 'pakistantoday.py')
 
+    def test_registry_keeps_both_daily_pakistan_downloaders(self):
+        import epaper_registry
+
+        self.assertEqual(epaper_registry.NEWSPAPERS['dailypakistan']['script'], 'dailypakistan.py')
+        self.assertEqual(
+            epaper_registry.NEWSPAPERS['dailypakistanlate']['script'],
+            'dailypakistan_late.py',
+        )
+        self.assertEqual(epaper_registry.NEWSPAPERS['dailypakistanlate']['available_after'], '23:00')
+
 
 if __name__ == '__main__':
     unittest.main()
