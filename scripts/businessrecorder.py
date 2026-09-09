@@ -13,7 +13,7 @@ from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = False
 
 OUTPUT_FOLDER = "BusinessRecorder_PDFs"
-BASE_IMAGE_URL = "https://e.brecorder.com/image/papers/{year}/{month}/{day}/page_{page}.jpg"
+BASE_IMAGE_URL = "https://e.brecorder.com/image/papers/{year}/{month}/{day}/page_{page}.jpg?download=1"
 MANDATORY_PAGES = tuple(range(1, 11))
 OPTIONAL_PAGES = (91, 95, 96, 97)
 RETRIES = 4
