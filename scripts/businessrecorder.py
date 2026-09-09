@@ -10,6 +10,11 @@ import img2pdf
 import requests
 from PIL import Image, ImageFile
 
+try:
+    from curl_cffi import requests as browser_requests
+except ImportError:
+    browser_requests = None
+
 ImageFile.LOAD_TRUNCATED_IMAGES = False
 
 OUTPUT_FOLDER = "BusinessRecorder_PDFs"
@@ -61,7 +66,7 @@ def fetch_image(session, url):
                         last_error = f"unexpected size {image.width}x{image.height}"
                     else:
                         return response.content, None
-        except (requests.RequestException, OSError, ValueError) as error:
+        except Exception as error:
             last_error = str(error)
         if attempt < RETRIES:
             time.sleep(attempt)
@@ -82,7 +87,11 @@ def normalise_jpeg(raw_bytes):
 def download_paper(date_obj=None):
     date_obj = date_obj or datetime.now(PKT)
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-    session = requests.Session()
+    session = (
+        browser_requests.Session(impersonate="chrome")
+        if browser_requests is not None
+        else requests.Session()
+    )
     page_bytes = {}
 
     for page_number in MANDATORY_PAGES:
