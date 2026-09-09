@@ -96,6 +96,13 @@ class EpaperRulesTest(unittest.TestCase):
         )
         self.assertEqual(epaper_registry.NEWSPAPERS['dailypakistanlate']['available_after'], '11:00')
 
+    def test_registry_includes_business_recorder(self):
+        import epaper_registry
+
+        config = epaper_registry.NEWSPAPERS['businessrecorder']
+        self.assertEqual(config['script'], 'businessrecorder.py')
+        self.assertEqual(config['available_after'], '08:00')
+
 
 if __name__ == '__main__':
     unittest.main()

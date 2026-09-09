@@ -52,12 +52,13 @@ const EPAPER_AVAILABLE_AFTER = {
     pakobserver: '10:20',
     khabrain: '08:00',
     kawish: '15:00',
-    pakistantoday: '08:00'
+    pakistantoday: '08:00',
+    businessrecorder: '08:00'
 };
 
 const EPAPER_TIMING_TEXT = [
     '5:00 AM: jo early papers available hon',
-    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Pakistan Today, Nai Baat, Nawaiwaqt, The Nation, Jasarat, Khabrain',
+    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Pakistan Today, Business Recorder, Nai Baat, Nawaiwaqt, The Nation, Jasarat, Khabrain',
     '10:00 AM ke baad: Mashriq Akhbar',
     '10:20 AM ke baad: Pakistan Observer',
     '11:30 AM ke baad: Daily Ausaf',
@@ -551,7 +552,7 @@ async function getStatusText(sessionId) {
 // Mirrors scripts/epaper_registry.py keys (for `.af epaper keys` reference only)
 const EPAPER_KEYS = [
     'express', 'jang', 'jangsundaymagazine', 'thenews', 'dawn', 'asas',
-    'nawaiwaqt', 'dailypakistan', 'dailypakistanlate', 'khabrain', 'naibaat', 'naibaatmagazine',
+    'nawaiwaqt', 'dailypakistan', 'dailypakistanlate', 'businessrecorder', 'khabrain', 'naibaat', 'naibaatmagazine',
     'countrynews', 'parliamenttimes', 'sahafat', 'jasarat', 'jehanpakistan',
     'islamk', 'mashriq', 'mashriqakhbar', 'baithak', 'ghaznavi', 'intekhab', 'kawish',
     'mahasib', 'pakobserver', 'thenation', 'ummat',
