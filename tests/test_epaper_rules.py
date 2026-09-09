@@ -94,7 +94,7 @@ class EpaperRulesTest(unittest.TestCase):
             epaper_registry.NEWSPAPERS['dailypakistanlate']['script'],
             'dailypakistan_late.py',
         )
-        self.assertEqual(epaper_registry.NEWSPAPERS['dailypakistanlate']['available_after'], '23:00')
+        self.assertEqual(epaper_registry.NEWSPAPERS['dailypakistanlate']['available_after'], '11:00')
 
 
 if __name__ == '__main__':

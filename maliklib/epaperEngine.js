@@ -47,7 +47,7 @@ const EPAPER_AVAILABLE_AFTER = {
     naibaat: '08:00',
     nawaiwaqt: '08:00',
     dailyausaf: '11:30',
-    dailypakistanlate: '23:00',
+    dailypakistanlate: '11:00',
     thenation: '08:00',
     pakobserver: '10:20',
     khabrain: '08:00',
@@ -62,7 +62,7 @@ const EPAPER_TIMING_TEXT = [
     '10:20 AM ke baad: Pakistan Observer',
     '11:30 AM ke baad: Daily Ausaf',
     '3:00 PM ke baad: Kawish',
-    '11:00 PM ke baad: Daily Pakistan (new editions)'
+    '11:00 AM ke baad: Daily Pakistan (new editions)'
 ];
 
 fs.ensureDirSync(WORKDIR);

@@ -81,11 +81,11 @@ NEWSPAPERS = {
         "batch": "baqi",
     },
     "dailypakistanlate": {
-        "display": "Daily Pakistan (11 PM)",
+        "display": "Daily Pakistan (11 AM)",
         "script": "dailypakistan_late.py",
         "mode": "cwd",
         "batch": "baqi",
-        "available_after": "23:00",
+        "available_after": "11:00",
     },
     "khabrain": {
         "display": "Khabrain",
