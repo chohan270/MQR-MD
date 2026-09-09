@@ -96,5 +96,12 @@ class EpaperRulesTest(unittest.TestCase):
         )
         self.assertEqual(epaper_registry.NEWSPAPERS['dailypakistanlate']['available_after'], '11:00')
 
+    def test_registry_includes_the_patriot_isb(self):
+        import epaper_registry
+
+        config = epaper_registry.NEWSPAPERS['thepatriot']
+        self.assertEqual(config['display'], 'The Patriot ISB')
+        self.assertEqual(config['script'], 'thepatriot.py')
+
 if __name__ == '__main__':
     unittest.main()

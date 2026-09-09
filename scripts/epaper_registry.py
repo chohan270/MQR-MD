@@ -247,6 +247,13 @@ NEWSPAPERS = {
         "mode": "cwd",
         "batch": "baqi",
     },
+    "thepatriot": {
+        "display": "The Patriot ISB",
+        "script": "thepatriot.py",
+        "mode": "cwd",
+        "batch": "baqi",
+        "available_after": "08:00",
+    },
 }
 
 
