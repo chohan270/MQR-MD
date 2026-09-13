@@ -192,6 +192,36 @@ async function malik_processPdfReaction(sock, cached, cacheKey, targets) {
     }
 }
 
+async function malik_resolvePdfMessage(sock, targetKey, cacheKey) {
+    const cached = malik_pdfCache.get(cacheKey);
+    if (cached && Date.now() - cached.createdAt <= MALIK_PDF_CACHE_TTL_MS) return cached;
+    malik_pdfCache.delete(cacheKey);
+
+    let message;
+    try {
+        if (typeof sock.loadMessage === 'function') {
+            message = await sock.loadMessage(targetKey.remoteJid, targetKey.id);
+        }
+    } catch (error) {
+        console.warn(`[PDF-REACTION] stored message lookup failed: ${error.message}`);
+    }
+
+    if (!message && typeof sock.fetchMessageHistory === 'function') {
+        try {
+            const history = await sock.fetchMessageHistory(50, targetKey, 0);
+            message = history?.find((item) => item.key?.id === targetKey.id && malik_isPdfDocument(item.message));
+        } catch (error) {
+            console.warn(`[PDF-REACTION] message history lookup failed: ${error.message}`);
+        }
+    }
+
+    if (!message || !malik_isPdfDocument(message.message)) return null;
+    const document = malik_unwrapMessage(message.message).documentMessage;
+    const resolved = { message, fileName: document.fileName, createdAt: Date.now() };
+    malik_pdfCache.set(cacheKey, resolved);
+    return resolved;
+}
+
 async function malik_handlePdfReaction(sock, sessionId, reactionMessage) {
     const reaction = reactionMessage.reactionMessage;
     if (!reaction?.text || (!reactionMessage.key.fromMe && !malik_isConfiguredOwner(jidNormalizedUser(reactionMessage.key.participant || reactionMessage.key.remoteJid), sock))) return;
@@ -199,9 +229,9 @@ async function malik_handlePdfReaction(sock, sessionId, reactionMessage) {
     const targetKey = { ...reaction.key, remoteJid: reaction.key.remoteJid || reactionMessage.key.remoteJid };
     const cacheKey = malik_pdfCacheKey(targetKey);
     if (malik_pdfReactionRuns.has(cacheKey)) return;
-    const cached = malik_pdfCache.get(cacheKey);
-    if (!cached || Date.now() - cached.createdAt > MALIK_PDF_CACHE_TTL_MS) {
-        console.warn(`[PDF-REACTION] source PDF not available in cache: ${cacheKey}`);
+    const cached = await malik_resolvePdfMessage(sock, targetKey, cacheKey);
+    if (!cached) {
+        console.warn(`[PDF-REACTION] source PDF not available in cache/history: ${cacheKey}`);
         return;
     }
 
