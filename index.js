@@ -432,7 +432,11 @@ async function startSession(sessionId) {
         if (!incomingMessages.length) return;
 
         for (const malik_msg of incomingMessages) {
-            await handleIncomingMessage(malik_sock, sessionId, malik_msg);
+            try {
+                await handleIncomingMessage(malik_sock, sessionId, malik_msg);
+            } catch (error) {
+                console.error(`[MESSAGE] unhandled message error: ${error.message}`);
+            }
         }
     });
 
