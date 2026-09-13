@@ -140,9 +140,16 @@ function malik_pdfCacheKey(key) {
     return `${key.remoteJid || ''}:${key.id || ''}`;
 }
 
-function malik_isConfiguredOwner(jid) {
+function malik_isConfiguredOwner(jid, sock) {
     const ownerNumber = (process.env.OWNER_NUMBER || process.env.BOT_OWNER_NUMBER || config.ownerNumber || '').replace(/\D/g, '');
-    return Boolean(ownerNumber && jidNormalizedUser(jid).replace(/\D/g, '').includes(ownerNumber));
+    const normalizedJid = jidNormalizedUser(jid || '');
+    const connectedJid = jidNormalizedUser(sock?.user?.id || '');
+    const senderNumber = normalizedJid.replace(/\D/g, '');
+    const connectedNumber = connectedJid.replace(/\D/g, '');
+    return Boolean(
+        normalizedJid && connectedJid && (normalizedJid === connectedJid || (senderNumber && senderNumber === connectedNumber)) ||
+        ownerNumber && senderNumber.includes(ownerNumber)
+    );
 }
 
 function malik_runPdfProcessor(inputPath, outputPath) {
@@ -187,7 +194,7 @@ async function malik_processPdfReaction(sock, cached, cacheKey, targets) {
 
 async function malik_handlePdfReaction(sock, sessionId, reactionMessage) {
     const reaction = reactionMessage.reactionMessage;
-    if (!reaction?.text || !malik_isConfiguredOwner(jidNormalizedUser(reactionMessage.key.participant || reactionMessage.key.remoteJid))) return;
+    if (!reaction?.text || (!reactionMessage.key.fromMe && !malik_isConfiguredOwner(jidNormalizedUser(reactionMessage.key.participant || reactionMessage.key.remoteJid), sock))) return;
 
     const targetKey = { ...reaction.key, remoteJid: reaction.key.remoteJid || reactionMessage.key.remoteJid };
     const cacheKey = malik_pdfCacheKey(targetKey);
