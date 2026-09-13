@@ -82,6 +82,11 @@ front-page watermark rule ko use karta hai, phir `.af epaper set` wale target
 groups mein processed PDF bhejta hai. Reaction na ho to target groups mein file
 nahi bheji jati.
 
+Multiple reactions ek FIFO queue mein one-by-one process hoti hain. Har PDF ke
+upload attempt ke baad input/output files aur cached source message foran clear
+ho jate hain, taake 10-15 PDFs ek saath react karne par Heroku memory stable
+rahe.
+
 Group ka JID nikalne ke liye group mein `.af` bhej dein — ya jo bhi purana
 JID-finder command (`gjids`/`jid`) already bot mein hai, wahi use karein.
 

@@ -125,6 +125,7 @@ function malik_getMessageText(messageObj) {
 const MALIK_PDF_CACHE_TTL_MS = 30 * 60 * 1000;
 const malik_pdfCache = new Map();
 const malik_pdfReactionRuns = new Set();
+let malik_pdfProcessingTail = Promise.resolve();
 
 function malik_isPdfDocument(messageObj) {
     const message = malik_unwrapMessage(messageObj);
@@ -156,28 +157,7 @@ function malik_runPdfProcessor(inputPath, outputPath) {
     });
 }
 
-async function malik_handlePdfReaction(sock, sessionId, reactionMessage) {
-    const reaction = reactionMessage.reactionMessage;
-    if (!reaction?.text || !malik_isConfiguredOwner(jidNormalizedUser(reactionMessage.key.participant || reactionMessage.key.remoteJid))) return;
-
-    const targetKey = { ...reaction.key, remoteJid: reaction.key.remoteJid || reactionMessage.key.remoteJid };
-    const cacheKey = malik_pdfCacheKey(targetKey);
-    if (malik_pdfReactionRuns.has(cacheKey)) return;
-    const cached = malik_pdfCache.get(cacheKey);
-    if (!cached || Date.now() - cached.createdAt > MALIK_PDF_CACHE_TTL_MS) {
-        console.warn(`[PDF-REACTION] source PDF not available in cache: ${cacheKey}`);
-        return;
-    }
-
-    malik_pdfReactionRuns.add(cacheKey);
-    const cfg = await malik_getEpaperConfig(sessionId);
-    const targets = cfg?.targetJids || [];
-    if (!cfg?.enabled || !targets.length) {
-        malik_pdfReactionRuns.delete(cacheKey);
-        console.warn('[PDF-REACTION] epaper system is disabled or has no target groups');
-        return;
-    }
-
+async function malik_processPdfReaction(sock, cached, cacheKey, targets) {
     const workDir = '/tmp/mqr_reacted_pdfs';
     const baseName = `${Date.now()}-${String(cached.fileName || 'reacted.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const inputPath = path.join(workDir, `input-${baseName}`);
@@ -197,11 +177,40 @@ async function malik_handlePdfReaction(sock, sessionId, reactionMessage) {
         console.log(`[PDF-REACTION] processed and sent ${cached.fileName || cacheKey} to ${targets.length} target(s)`);
     } catch (error) {
         console.error(`[PDF-REACTION] failed for ${cacheKey}:`, error.message);
-        malik_pdfReactionRuns.delete(cacheKey);
     } finally {
         await fs.promises.rm(inputPath, { force: true }).catch(() => {});
         await fs.promises.rm(outputPath, { force: true }).catch(() => {});
+        malik_pdfCache.delete(cacheKey);
+        malik_pdfReactionRuns.delete(cacheKey);
     }
+}
+
+async function malik_handlePdfReaction(sock, sessionId, reactionMessage) {
+    const reaction = reactionMessage.reactionMessage;
+    if (!reaction?.text || !malik_isConfiguredOwner(jidNormalizedUser(reactionMessage.key.participant || reactionMessage.key.remoteJid))) return;
+
+    const targetKey = { ...reaction.key, remoteJid: reaction.key.remoteJid || reactionMessage.key.remoteJid };
+    const cacheKey = malik_pdfCacheKey(targetKey);
+    if (malik_pdfReactionRuns.has(cacheKey)) return;
+    const cached = malik_pdfCache.get(cacheKey);
+    if (!cached || Date.now() - cached.createdAt > MALIK_PDF_CACHE_TTL_MS) {
+        console.warn(`[PDF-REACTION] source PDF not available in cache: ${cacheKey}`);
+        return;
+    }
+
+    malik_pdfReactionRuns.add(cacheKey);
+    const cfg = await malik_getEpaperConfig(sessionId);
+    const targets = cfg?.targetJids || [];
+    if (!cfg?.enabled || !targets.length) {
+        malik_pdfCache.delete(cacheKey);
+        malik_pdfReactionRuns.delete(cacheKey);
+        console.warn('[PDF-REACTION] epaper system is disabled or has no target groups');
+        return;
+    }
+
+    const queued = malik_pdfProcessingTail.then(() => malik_processPdfReaction(sock, cached, cacheKey, targets));
+    malik_pdfProcessingTail = queued.catch(() => {});
+    await queued;
 }
 
 // -----------------------------------------------------------------------------
@@ -399,7 +408,9 @@ async function startSession(sessionId) {
         const malik_text = malik_getMessageText(malik_msg.message);
 
         if (malik_unwrapMessage(malik_msg.message).reactionMessage) {
-            await malik_handlePdfReaction(malik_sock, sessionId, malik_msg);
+            malik_handlePdfReaction(malik_sock, sessionId, malik_msg).catch((error) => {
+                console.error('[PDF-REACTION] queue error:', error.message);
+            });
             return;
         }
 
