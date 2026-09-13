@@ -254,6 +254,13 @@ NEWSPAPERS = {
         "batch": "baqi",
         "available_after": "08:00",
     },
+    "leadpakistan": {
+        "display": "Lead Pakistan",
+        "script": "leadpakistan.py",
+        "mode": "argparse",
+        "batch": "baqi",
+        "available_after": "08:00",
+    },
 }
 
 

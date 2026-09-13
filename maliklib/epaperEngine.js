@@ -53,7 +53,8 @@ const EPAPER_AVAILABLE_AFTER = {
     khabrain: '08:00',
     kawish: '15:00',
     pakistantoday: '08:00',
-    thepatriot: '08:00'
+    thepatriot: '08:00',
+    leadpakistan: '08:00'
 };
 
 const EPAPER_TIMING_TEXT = [
@@ -558,7 +559,7 @@ const EPAPER_KEYS = [
     'countrynews', 'parliamenttimes', 'sahafat', 'jasarat', 'jehanpakistan',
     'islamk', 'mashriq', 'mashriqakhbar', 'baithak', 'ghaznavi', 'intekhab', 'kawish',
     'mahasib', 'pakobserver', 'thenation', 'ummat',
-    'pakistantoday', 'aaj', 'dailyausaf', 'dailyk2', 'jinnah'
+    'pakistantoday', 'aaj', 'dailyausaf', 'dailyk2', 'jinnah', 'leadpakistan'
 ];
 
 module.exports = {

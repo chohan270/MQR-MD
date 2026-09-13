@@ -103,5 +103,12 @@ class EpaperRulesTest(unittest.TestCase):
         self.assertEqual(config['display'], 'The Patriot ISB')
         self.assertEqual(config['script'], 'thepatriot.py')
 
+    def test_registry_includes_lead_pakistan_at_eight_am(self):
+        import epaper_registry
+
+        config = epaper_registry.NEWSPAPERS['leadpakistan']
+        self.assertEqual(config['script'], 'leadpakistan.py')
+        self.assertEqual(config['available_after'], '08:00')
+
 if __name__ == '__main__':
     unittest.main()

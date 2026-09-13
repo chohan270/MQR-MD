@@ -7,14 +7,16 @@ require('dotenv').config();
 const {
     DisconnectReason,
     jidNormalizedUser,
+    downloadMediaMessage,
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 
 const { malik_connectSession, malik_clearSession, malik_requestPairingCode } = require('./maliklib/session');
-const { malik_connectDatabase, malik_getGroupSettings, malik_isDbConnected, malik_getGlobalAutoForward, malik_updateGlobalAutoForward } = require('./maliklib/database');
+const { malik_connectDatabase, malik_getGroupSettings, malik_isDbConnected, malik_getGlobalAutoForward, malik_updateGlobalAutoForward, malik_getEpaperConfig } = require('./maliklib/database');
 const epaperEngine = require('./maliklib/epaperEngine');
 const config = require('./malik');
 const qrcode = require('qrcode');
@@ -118,6 +120,88 @@ function malik_getMessageText(messageObj) {
         message.imageMessage?.caption ||
         message.videoMessage?.caption ||
         message.documentMessage?.caption || '';
+}
+
+const MALIK_PDF_CACHE_TTL_MS = 30 * 60 * 1000;
+const malik_pdfCache = new Map();
+const malik_pdfReactionRuns = new Set();
+
+function malik_isPdfDocument(messageObj) {
+    const message = malik_unwrapMessage(messageObj);
+    const document = message.documentMessage;
+    return Boolean(document && (
+        document.mimetype === 'application/pdf' ||
+        document.fileName?.toLowerCase().endsWith('.pdf')
+    ));
+}
+
+function malik_pdfCacheKey(key) {
+    return `${key.remoteJid || ''}:${key.id || ''}`;
+}
+
+function malik_isConfiguredOwner(jid) {
+    const ownerNumber = (process.env.OWNER_NUMBER || process.env.BOT_OWNER_NUMBER || config.ownerNumber || '').replace(/\D/g, '');
+    return Boolean(ownerNumber && jidNormalizedUser(jid).replace(/\D/g, '').includes(ownerNumber));
+}
+
+function malik_runPdfProcessor(inputPath, outputPath) {
+    return new Promise((resolve, reject) => {
+        const scriptPath = path.join(__dirname, 'scripts', 'mw.py');
+        const python = process.env.PYTHON_BIN || 'python3';
+        const child = spawn(python, [scriptPath, '--input', inputPath, '--output', outputPath], { cwd: __dirname });
+        let stderr = '';
+        child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+        child.on('error', reject);
+        child.on('close', (code) => code === 0 ? resolve() : reject(new Error(stderr || `mw.py exited with ${code}`)));
+    });
+}
+
+async function malik_handlePdfReaction(sock, sessionId, reactionMessage) {
+    const reaction = reactionMessage.reactionMessage;
+    if (!reaction?.text || !malik_isConfiguredOwner(jidNormalizedUser(reactionMessage.key.participant || reactionMessage.key.remoteJid))) return;
+
+    const targetKey = { ...reaction.key, remoteJid: reaction.key.remoteJid || reactionMessage.key.remoteJid };
+    const cacheKey = malik_pdfCacheKey(targetKey);
+    if (malik_pdfReactionRuns.has(cacheKey)) return;
+    const cached = malik_pdfCache.get(cacheKey);
+    if (!cached || Date.now() - cached.createdAt > MALIK_PDF_CACHE_TTL_MS) {
+        console.warn(`[PDF-REACTION] source PDF not available in cache: ${cacheKey}`);
+        return;
+    }
+
+    malik_pdfReactionRuns.add(cacheKey);
+    const cfg = await malik_getEpaperConfig(sessionId);
+    const targets = cfg?.targetJids || [];
+    if (!cfg?.enabled || !targets.length) {
+        malik_pdfReactionRuns.delete(cacheKey);
+        console.warn('[PDF-REACTION] epaper system is disabled or has no target groups');
+        return;
+    }
+
+    const workDir = '/tmp/mqr_reacted_pdfs';
+    const baseName = `${Date.now()}-${String(cached.fileName || 'reacted.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const inputPath = path.join(workDir, `input-${baseName}`);
+    const outputPath = path.join(workDir, `output-${baseName}`);
+    try {
+        await fs.promises.mkdir(workDir, { recursive: true });
+        const source = await downloadMediaMessage(cached.message, 'buffer', {}, { logger: console });
+        await fs.promises.writeFile(inputPath, source);
+        await malik_runPdfProcessor(inputPath, outputPath);
+        for (const targetJid of targets) {
+            await sock.sendMessage(targetJid, {
+                document: { url: outputPath },
+                mimetype: 'application/pdf',
+                fileName: cached.fileName || 'processed.pdf'
+            });
+        }
+        console.log(`[PDF-REACTION] processed and sent ${cached.fileName || cacheKey} to ${targets.length} target(s)`);
+    } catch (error) {
+        console.error(`[PDF-REACTION] failed for ${cacheKey}:`, error.message);
+        malik_pdfReactionRuns.delete(cacheKey);
+    } finally {
+        await fs.promises.rm(inputPath, { force: true }).catch(() => {});
+        await fs.promises.rm(outputPath, { force: true }).catch(() => {});
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -314,6 +398,20 @@ async function startSession(sessionId) {
         
         const malik_text = malik_getMessageText(malik_msg.message);
 
+        if (malik_unwrapMessage(malik_msg.message).reactionMessage) {
+            await malik_handlePdfReaction(malik_sock, sessionId, malik_msg);
+            return;
+        }
+
+        if (malik_origin.endsWith('@g.us') && !malik_msg.key.fromMe && malik_isPdfDocument(malik_msg.message)) {
+            const document = malik_unwrapMessage(malik_msg.message).documentMessage;
+            malik_pdfCache.set(malik_pdfCacheKey(malik_msg.key), {
+                message: malik_msg,
+                fileName: document.fileName,
+                createdAt: Date.now()
+            });
+        }
+
         let globalCfg = null;
         let groupSettings = null;
         if (malik_origin.endsWith('@g.us') && !malik_msg.key.fromMe) {
@@ -327,7 +425,7 @@ async function startSession(sessionId) {
         // 1. GLOBAL AUTO FORWARD LOGIC (Background)
         if (malik_origin.endsWith('@g.us') && !malik_msg.key.fromMe) {
             try {
-                if (globalCfg?.enabled && globalCfg.sourceJids?.includes(malik_origin) && globalCfg.targetJids?.length > 0) {
+                if (!malik_isPdfDocument(malik_msg.message) && globalCfg?.enabled && globalCfg.sourceJids?.includes(malik_origin) && globalCfg.targetJids?.length > 0) {
                     // Per-media-type forwarding switches (Video/Image/Document/Text/Sticker/Audio) — set from the dashboard
                     const malik_mediaType = malik_getMediaType(malik_msg.message);
                     const malik_toggles = globalCfg.mediaToggles || {};
@@ -367,7 +465,7 @@ async function startSession(sessionId) {
         // 2. GROUP-SPECIFIC AUTO FORWARD LOGIC (Background)
         if (malik_origin.endsWith('@g.us') && !malik_msg.key.fromMe) {
             try {
-                if (groupSettings && groupSettings.autoForward && groupSettings.autoForwardTargets?.length > 0) {
+                if (!malik_isPdfDocument(malik_msg.message) && groupSettings && groupSettings.autoForward && groupSettings.autoForwardTargets?.length > 0) {
                     let relayMsg = processAndCleanMessage(malik_msg.message);
                     
                     // Unwrap View Once
@@ -444,6 +542,14 @@ const MALIK_TEMP_FILE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
 function malik_performCacheCleanup() {
     try {
+        const expiry = Date.now() - MALIK_PDF_CACHE_TTL_MS;
+        for (const [key, cached] of malik_pdfCache.entries()) {
+            if (cached.createdAt < expiry) {
+                malik_pdfCache.delete(key);
+                malik_pdfReactionRuns.delete(key);
+            }
+        }
+
         // 1. Clean stale temp files (leftover partial downloads, .part/.ytdl fragments, etc.)
         if (fs.existsSync(MALIK_TEMP_DIR)) {
             const now = Date.now();

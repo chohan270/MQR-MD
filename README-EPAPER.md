@@ -1,7 +1,7 @@
 # MQR MD — Epaper Auto-Forward WhatsApp Bot (Heroku)
 
 Ye repo aapka mojooda Baileys bot hai + **poora automated Epaper system**
-add kiya gaya hai (26 newspapers: Express, Jang, The News, Dawn, Nawaiwaqt,
+add kiya gaya hai (27 newspapers: Express, Jang, The News, Dawn, Nawaiwaqt,
 Jasarat, Khabrain waghera).
 
 ## 🧠 Kaise kaam karta hai
@@ -42,6 +42,7 @@ karta hai, jab tak maxRetries (default 4) khatam na ho.
 | 4:30 AM (daily) | Early baqi newspapers download + watermark; late papers apne publication window tak hold |
 | 5:00 AM (daily) | Baqi 25 newspapers: jo ban chuki unko send + delete |
 | 8:00 AM ke baad | Mashriq, Pakistan Today, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain: aaj ki copy available hone par retry/send |
+| 8:00 AM ke baad | Lead Pakistan aur The Patriot: website par aaj ki edition milte hi retry/send |
 | 10:00 AM ke baad | Mashriq Akhbar: aaj ki copy available hone par retry/send |
 | 3:00 PM ke baad | Kawish: aaj ki copy available hone par retry/send |
 | Har 15 min, 3AM–11:45PM | Sirf FAILED newspapers dobara try — **koi attempt-limit nahi**, lekin har paper apne publication window se pehle run nahi hota |
@@ -71,6 +72,15 @@ kar sakta hai — ya `.env`/DB mein defined sudo).
 .af epaper run                           → abhi turant Express + Baqi + retries chalao (manual)
 .af epaper                               → status dekho (ON/OFF, targets, last run, pending retries)
 ```
+
+### Owner-reaction PDF workflow
+
+Kisi bhi group mein aane wali PDF generic auto-forward nahi hoti. Bot sirf
+configured owner ke reaction par us PDF ko process karta hai: `mw.py` promo
+pages/bottom watermark cleanup aur PDF merge karta hai, `wm.py` ke two-PNG
+front-page watermark rule ko use karta hai, phir `.af epaper set` wale target
+groups mein processed PDF bhejta hai. Reaction na ho to target groups mein file
+nahi bheji jati.
 
 Group ka JID nikalne ke liye group mein `.af` bhej dein — ya jo bhi purana
 JID-finder command (`gjids`/`jid`) already bot mein hai, wahi use karein.
@@ -159,6 +169,8 @@ ka uthe rehna zaroori hai taake cron chal sake.
 | `package.json` | `node-cron`, `fs-extra` add kiye |
 | `maliklib/database.js` | `EpaperConfig` + `EpaperSentFile` schemas/functions add |
 | `maliklib/epaperEngine.js` | **NEW** — cron, python-spawn, WhatsApp send, retry logic |
+| `scripts/mw.py` | Owner reaction wali PDFs ka cleanup, two-PNG watermark aur merge pipeline |
+| `scripts/leadpakistan.py` | Current-date Lead Pakistan downloader |
 | `malikplugins/autoforward.js` | `.af epaper set/on/off/run` commands add |
 | `index.js` | Connection open hone par `epaperEngine.init()` call |
 | `.env.example` | Sirf `SESSION_ID` + `MONGODB_URI` |
