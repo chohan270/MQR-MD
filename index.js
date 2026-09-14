@@ -18,6 +18,7 @@ const { spawn } = require('child_process');
 const { malik_connectSession, malik_clearSession, malik_requestPairingCode } = require('./maliklib/session');
 const { malik_connectDatabase, malik_getGroupSettings, malik_isDbConnected, malik_getGlobalAutoForward, malik_updateGlobalAutoForward, malik_getEpaperConfig } = require('./maliklib/database');
 const epaperEngine = require('./maliklib/epaperEngine');
+const pdfQueue = require('./maliklib/pdfQueue');
 const config = require('./malik');
 const qrcode = require('qrcode');
 
@@ -449,18 +450,14 @@ async function startSession(sessionId) {
         const malik_text = malik_getMessageText(malik_msg.message);
 
         if (malik_unwrapMessage(malik_msg.message).reactionMessage) {
-            malik_handlePdfReaction(malik_sock, sessionId, malik_msg).catch((error) => {
-                console.error('[PDF-REACTION] queue error:', error.message);
-            });
+            // Reactions are intentionally ignored. PDF processing is controlled
+            // only through the owner's private .mw batch command.
             return;
         }
 
-        if (malik_origin.endsWith('@g.us') && !malik_msg.key.fromMe && malik_isPdfDocument(malik_msg.message)) {
-            const document = malik_unwrapMessage(malik_msg.message).documentMessage;
-            malik_pdfCache.set(malik_pdfCacheKey(malik_msg.key), {
-                message: malik_msg,
-                fileName: document.fileName,
-                createdAt: Date.now()
+        if (!malik_msg.key.fromMe && malik_isPdfDocument(malik_msg.message)) {
+            pdfQueue.rememberAndQueue(sessionId, malik_msg).catch((error) => {
+                console.error(`[PDF-QUEUE] could not save ${malik_msg.key.id}: ${error.message}`);
             });
         }
 
@@ -558,13 +555,13 @@ async function startSession(sessionId) {
                     }
 
                     // For simplicity, we define isOwner as true if it's the bot itself or listed in config
-                    const ownerNum = (process.env.OWNER_NUMBER || process.env.BOT_OWNER_NUMBER || config.ownerNumber || '').replace(/\D/g, '');
-                    const isOwner = malik_msg.key.fromMe || (ownerNum && malik_sender.includes(ownerNum));
+                    const isOwner = malik_msg.key.fromMe || malik_isConfiguredOwner(malik_sender, malik_sock);
 
                     await plugin.malik_handler(malik_sock, malik_origin, {
                         malik_sender,
                         malik_msg,
                         malik_args,
+                        malik_command: malik_cmd_input,
                         sessionId,
                         malik_text,
                         malik_isGroup: isGroup,

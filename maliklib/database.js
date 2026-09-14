@@ -153,6 +153,20 @@ const malik_epaperSentFileSchema = new mongoose.Schema({
 });
 malik_epaperSentFileSchema.index({ date: 1, fileName: 1 }, { unique: true });
 
+const malik_pdfQueueSchema = new mongoose.Schema({
+    messageKey: { type: String, required: true, unique: true },
+    remoteJid: { type: String, required: true },
+    messageId: { type: String, required: true },
+    participant: { type: String, default: '' },
+    fileName: { type: String, required: true },
+    mimetype: { type: String, default: 'application/pdf' },
+    receivedAt: { type: Date, default: Date.now },
+    status: { type: String, enum: ['pending', 'processing', 'sent', 'failed'], default: 'pending' },
+    error: { type: String, default: '' },
+    processedAt: { type: Date, default: null }
+});
+malik_pdfQueueSchema.index({ receivedAt: 1 }, { expireAfterSeconds: 86400 });
+
 let isConnected = false;
 
 // ---------------------------------------------------------------------------
@@ -182,6 +196,7 @@ function getModel(sessionId, type) {
         case 'Rank': return mongoose.model(modelName, malik_rankSchema, collectionName);
         case 'EpaperConfig': return mongoose.model(modelName, malik_epaperConfigSchema, collectionName);
         case 'EpaperSentFile': return mongoose.model(modelName, malik_epaperSentFileSchema, collectionName);
+        case 'PdfQueue': return mongoose.model(modelName, malik_pdfQueueSchema, collectionName);
         default: throw new Error(`Unknown model type: ${type}`);
     }
 }
@@ -762,6 +777,62 @@ async function malik_clearEpaperSentToday(sessionId, date) {
     }
 }
 
+async function malik_addPdfQueueItem(sessionId, item) {
+    if (!isConnected) return null;
+    try {
+        const Model = getModel(sessionId, 'PdfQueue');
+        return await Model.findOneAndUpdate(
+            { messageKey: item.messageKey },
+            { $setOnInsert: item },
+            { upsert: true, returnDocument: 'after' }
+        ).lean();
+    } catch (e) {
+        console.error('DB Error addPdfQueueItem:', e);
+        return null;
+    }
+}
+
+async function malik_listPdfQueue(sessionId, since) {
+    if (!isConnected) return [];
+    try {
+        const Model = getModel(sessionId, 'PdfQueue');
+        return await Model.find({ receivedAt: { $gte: since }, status: { $in: ['pending', 'failed'] } })
+            .sort({ receivedAt: 1 }).lean();
+    } catch (e) {
+        console.error('DB Error listPdfQueue:', e);
+        return [];
+    }
+}
+
+async function malik_claimPdfQueueItem(sessionId, id) {
+    if (!isConnected) return null;
+    try {
+        const Model = getModel(sessionId, 'PdfQueue');
+        return await Model.findOneAndUpdate(
+            { _id: id, status: { $in: ['pending', 'failed'] } },
+            { $set: { status: 'processing', error: '' } },
+            { returnDocument: 'after' }
+        ).lean();
+    } catch (e) {
+        console.error('DB Error claimPdfQueueItem:', e);
+        return null;
+    }
+}
+
+async function malik_updatePdfQueueItem(sessionId, id, status, error = '') {
+    if (!isConnected) return false;
+    try {
+        const Model = getModel(sessionId, 'PdfQueue');
+        await Model.updateOne({ _id: id }, {
+            $set: { status, error: String(error || '').slice(0, 1000), processedAt: status === 'sent' ? new Date() : null }
+        });
+        return true;
+    } catch (e) {
+        console.error('DB Error updatePdfQueueItem:', e);
+        return false;
+    }
+}
+
 module.exports = {
     malik_connectDatabase,
     malik_isDbConnected,
@@ -802,5 +873,9 @@ module.exports = {
     malik_claimEpaperFile,
     malik_releaseEpaperFileClaim,
     malik_markEpaperFileSent,
-    malik_clearEpaperSentToday
+    malik_clearEpaperSentToday,
+    malik_addPdfQueueItem,
+    malik_listPdfQueue,
+    malik_claimPdfQueueItem,
+    malik_updatePdfQueueItem
 };

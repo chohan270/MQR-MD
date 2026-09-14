@@ -5,6 +5,7 @@
  */
 const { malik_updateGroupSettings, malik_getGroupSettings, malik_getGlobalAutoForward, malik_updateGlobalAutoForward, malik_getEpaperConfig, malik_updateEpaperConfig, malik_clearEpaperSentToday } = require('../maliklib/database');
 const epaperEngine = require('../maliklib/epaperEngine');
+const pdfQueue = require('../maliklib/pdfQueue');
 
 /**
  * Helper: extract JIDs from free-form text. Pulls out digit-sequences that
@@ -28,13 +29,58 @@ function commandPanel(title, lines) {
 module.exports = {
     name: 'autoforward',
     description: 'Auto-forward messages from source groups to targets — works even without admin',
-    aliases: ['af', 'autof'],
+    aliases: ['af', 'autof', 'mw'],
     category: 'Group',
     malik_handler: async (sock, from, context) => {
-        const { malik_msg, malik_args, malik_isAdmin, malik_isOwner, malik_isSudo, malik_isGroup, sessionId } = context;
+        const { malik_msg, malik_args, malik_command, malik_isAdmin, malik_isOwner, malik_isSudo, malik_isGroup, sessionId } = context;
 
         const action = malik_args[0]?.toLowerCase();
         const sub = malik_args[1]?.toLowerCase();
+
+        // ─────────────────────────────────────────────────────────────────────
+        // OWNER PDF QUEUE (works from the owner's private chat)
+        // ─────────────────────────────────────────────────────────────────────
+        if (malik_command === 'mw' || action === 'mw') {
+            if (!malik_isOwner) {
+                return await sock.sendMessage(from, { text: '❌ Owner access required.' }, { quoted: malik_msg });
+            }
+            if (malik_isGroup) {
+                return await sock.sendMessage(from, { text: 'ℹ️ PDF commands sirf bot ki private chat mein use karein.' }, { quoted: malik_msg });
+            }
+
+            const mwArgs = malik_command === 'mw' ? malik_args : malik_args.slice(1);
+            const mwAction = mwArgs[0]?.toLowerCase();
+            const items = await pdfQueue.listItems(sessionId);
+            if (!mwAction || mwAction === 'list') {
+                if (!items.length) return await sock.sendMessage(from, { text: '📥 Last 24 hours mein koi pending PDF nahi hai.' }, { quoted: malik_msg });
+                const lines = items.map((item, index) => {
+                    const source = item.remoteJid?.endsWith('@g.us') ? `group ${item.remoteJid}` : `chat ${item.remoteJid}`;
+                    return `${index + 1}. ${item.fileName}\n   ${source} | ${new Date(item.receivedAt).toLocaleString('en-GB', { timeZone: 'Asia/Karachi' })}`;
+                });
+                return await sock.sendMessage(from, {
+                    text: `📋 *PDF Queue (last 24 hours)*\n\n${lines.join('\n')}\n\nUse: *.mw process 1,2,3* or *.mw process all*`
+                }, { quoted: malik_msg });
+            }
+
+            if (mwAction === 'process') {
+                const selection = mwArgs.slice(1).join('').toLowerCase();
+                if (!selection) return await sock.sendMessage(from, { text: '❌ Use `.mw process 1,2,3` or `.mw process all`.' }, { quoted: malik_msg });
+                const ids = selection === 'all' ? 'all' : [...new Set(selection.split(',').map((value) => value.trim()).filter(Boolean))];
+                await sock.sendMessage(from, { text: `⏳ ${selection === 'all' ? 'All pending PDFs' : `PDFs ${ids.join(', ')}`} queue mein process ho rahi hain...` }, { quoted: malik_msg });
+                pdfQueue.processItems(sock, sessionId, ids).then(async (results) => {
+                    const sent = results.filter((result) => result.status === 'sent').length;
+                    const failed = results.filter((result) => result.status === 'failed');
+                    let report = `✅ Complete\n📤 Sent: ${sent}`;
+                    if (failed.length) report += `\n❌ Failed: ${failed.map((result) => `${result.fileName}: ${result.error}`).join('\n')}`;
+                    await sock.sendMessage(from, { text: report }).catch(() => {});
+                }).catch(async (error) => {
+                    await sock.sendMessage(from, { text: `❌ PDF queue failed: ${error.message}` }).catch(() => {});
+                });
+                return;
+            }
+
+            return await sock.sendMessage(from, { text: '❓ Use `.mw list`, `.mw process 1,2` or `.mw process all`.' }, { quoted: malik_msg });
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         // GLOBAL SET COMMANDS (owner-only)
