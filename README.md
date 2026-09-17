@@ -20,11 +20,11 @@ The main bot workflow is message forwarding. Configure sources, targets and grou
 
 ### Owner PDF Queue
 
-PDFs received from any group or contact are recorded as metadata only for 24 hours. They are not downloaded, modified or forwarded automatically. From the bot owner's private chat, use:
+PDFs received from any group or contact are recorded as metadata only for 8 hours. They are not downloaded, modified or forwarded automatically. From the bot owner's private chat, use:
 
-| Command | Action |
+| Command | Purpose |
 | --- | --- |
-| `.mw list` | Show pending PDFs from the last 24 hours with their full filenames. |
+| `.mw list` | Show pending PDFs from the last 8 hours with their full filenames. |
 | `.mw process 1,2,3` | Download and process only the selected PDFs through `scripts/mw.py`. |
 | `.mw process all` | Process every pending PDF in the list. |
 

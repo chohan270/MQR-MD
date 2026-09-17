@@ -32,6 +32,9 @@ Y_OFFSET = -8
 
 def clean_filename(filename):
     name, ext = os.path.splitext(filename)
+    name = re.sub(r'(?i)(?:^|[\s._-])mw(?:[\s._-]|$)', ' ', name)
+    name = re.sub(r'(?i)(?:^|[\s._-])m\.?w\.?(?:[\s._-]|$)', ' ', name)
+
     months = r"Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December"
     match = re.match(rf"^(\d{{1,2}})\s+({months})\s+(.+)$", name, re.I)
     if match:
@@ -42,7 +45,9 @@ def clean_filename(filename):
         if match:
             rest, day, month = match.groups()
             name = f"{rest.strip()} {day}{month}"
-    return re.sub(r"\s+", " ", name).strip() + ext.lower()
+    name = re.sub(r"\s+", " ", name).strip()
+    name = re.sub(r"^[\s._-]+|[\s._-]+$", "", name)
+    return name + ext.lower()
 
 
 def is_promo_page(page):
@@ -139,6 +144,15 @@ def build_front_watermark(page):
     return PdfReader(buffer).pages[0], image
 
 
+def save_front_page_thumbnail(image, output_path):
+    if image is None:
+        return None
+    thumb_path = os.path.splitext(output_path)[0] + ".thumb.jpg"
+    with open(thumb_path, "wb") as thumb_file:
+        thumb_file.write(wm.make_thumbnail_jpeg(image))
+    return thumb_path
+
+
 def process_pdf(pdf_path, output_path):
     reader = PdfReader(pdf_path)
     pages = list(reader.pages)
@@ -148,7 +162,7 @@ def process_pdf(pdf_path, output_path):
     remove_promo_pages(pages)
     remove_bottom_watermark(pages)
 
-    front_page, _ = build_front_watermark(pages[0])
+    front_page, front_image = build_front_watermark(pages[0])
     writer = PdfWriter()
     for index, page in enumerate(pages):
         writer.add_page(front_page if index == 0 and front_page is not None else page)
@@ -161,6 +175,7 @@ def process_pdf(pdf_path, output_path):
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "wb") as output:
         writer.write(output)
+    save_front_page_thumbnail(front_image, output_path)
     return output_path
 
 

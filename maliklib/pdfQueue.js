@@ -12,9 +12,25 @@ const {
     malik_getEpaperConfig
 } = require('./database');
 
-const RETENTION_MS = 24 * 60 * 60 * 1000;
+const PDF_QUEUE_RETENTION_HOURS = 8;
+const RETENTION_MS = PDF_QUEUE_RETENTION_HOURS * 60 * 60 * 1000;
 const messageCache = new Map();
 let processingTail = Promise.resolve();
+
+function sanitizePdfFileName(fileName) {
+    const raw = String(fileName || '').trim();
+    if (!raw) return 'document.pdf';
+    const extMatch = raw.match(/(\.[A-Za-z0-9]+)$/);
+    const extension = extMatch ? extMatch[1].toLowerCase() : '.pdf';
+    const base = extMatch ? raw.slice(0, -extMatch[1].length) : raw;
+    const cleaned = base
+        .replace(/(?i)(?:^|[\s._-])mw(?:[\s._-]|$)/g, ' ')
+        .replace(/(?i)(?:^|[\s._-])m\.?w\.?(?:[\s._-]|$)/g, ' ')
+        .replace(/[\s._-]+/g, ' ')
+        .replace(/^\s+|\s+$/g, '')
+        .replace(/^[._-]+|[._-]+$/g, '');
+    return `${cleaned || 'document'}${extension}`;
+}
 
 function messageKey(key) {
     return `${key.remoteJid || ''}:${key.id || ''}`;
@@ -24,13 +40,14 @@ function rememberPdf(message) {
     const document = message?.message?.documentMessage;
     if (!document || document.mimetype !== 'application/pdf' && !document.fileName?.toLowerCase().endsWith('.pdf')) return null;
     const key = messageKey(message.key);
+    const fileName = sanitizePdfFileName(document.fileName || `${message.key.id}.pdf`);
     messageCache.set(key, { message, expiresAt: Date.now() + RETENTION_MS });
     return {
         messageKey: key,
         remoteJid: message.key.remoteJid,
         messageId: message.key.id,
         participant: message.key.participant || '',
-        fileName: document.fileName || `${message.key.id}.pdf`,
+        fileName,
         mimetype: document.mimetype || 'application/pdf',
         receivedAt: new Date(message.messageTimestamp ? Number(message.messageTimestamp) * 1000 : Date.now())
     };
@@ -88,6 +105,7 @@ async function processOne(sock, sessionId, item, targets) {
     const base = `${Date.now()}-${safeName}`;
     const inputPath = path.join(workDir, `input-${base}`);
     const outputPath = path.join(workDir, `output-${base}`);
+    const thumbPath = outputPath.replace(/\.pdf$/i, '.thumb.jpg');
     try {
         const source = await resolveMessage(sock, claimed);
         if (!source) throw new Error('Original PDF message is no longer available on WhatsApp');
@@ -95,11 +113,18 @@ async function processOne(sock, sessionId, item, targets) {
         await fs.promises.mkdir(workDir, { recursive: true });
         await fs.promises.writeFile(inputPath, buffer);
         await runMw(inputPath, outputPath);
+        let jpegThumbnail;
+        try {
+            jpegThumbnail = await fs.promises.readFile(thumbPath);
+        } catch {
+            jpegThumbnail = undefined;
+        }
         for (const targetJid of targets) {
             await sock.sendMessage(targetJid, {
                 document: { url: outputPath },
                 mimetype: 'application/pdf',
-                fileName: `MW ${claimed.fileName}`
+                fileName: claimed.fileName,
+                ...(jpegThumbnail ? { jpegThumbnail } : {})
             });
         }
         await malik_updatePdfQueueItem(sessionId, claimed._id, 'sent');
@@ -110,6 +135,7 @@ async function processOne(sock, sessionId, item, targets) {
     } finally {
         await fs.promises.rm(inputPath, { force: true }).catch(() => {});
         await fs.promises.rm(outputPath, { force: true }).catch(() => {});
+        await fs.promises.rm(thumbPath, { force: true }).catch(() => {});
     }
 }
 

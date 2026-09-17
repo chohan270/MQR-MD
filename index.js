@@ -153,6 +153,21 @@ function malik_isConfiguredOwner(jid, sock) {
     );
 }
 
+function sanitizePdfFileName(fileName) {
+    const raw = String(fileName || '').trim();
+    if (!raw) return 'document.pdf';
+    const match = raw.match(/(\.[A-Za-z0-9]+)$/);
+    const extension = match ? match[1].toLowerCase() : '.pdf';
+    const base = match ? raw.slice(0, -match[1].length) : raw;
+    const cleaned = base
+        .replace(/(?i)(?:^|[\s._-])mw(?:[\s._-]|$)/g, ' ')
+        .replace(/(?i)(?:^|[\s._-])m\.?w\.?(?:[\s._-]|$)/g, ' ')
+        .replace(/[\s._-]+/g, ' ')
+        .replace(/^\s+|\s+$/g, '')
+        .replace(/^[._-]+|[._-]+$/g, '');
+    return `${cleaned || 'document'}${extension}`;
+}
+
 function malik_runPdfProcessor(inputPath, outputPath) {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, 'scripts', 'mw.py');
@@ -170,16 +185,25 @@ async function malik_processPdfReaction(sock, cached, cacheKey, targets) {
     const baseName = `${Date.now()}-${String(cached.fileName || 'reacted.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const inputPath = path.join(workDir, `input-${baseName}`);
     const outputPath = path.join(workDir, `output-${baseName}`);
+    const thumbPath = outputPath.replace(/\.pdf$/i, '.thumb.jpg');
     try {
         await fs.promises.mkdir(workDir, { recursive: true });
         const source = await downloadMediaMessage(cached.message, 'buffer', {}, { logger: console });
         await fs.promises.writeFile(inputPath, source);
         await malik_runPdfProcessor(inputPath, outputPath);
+        let jpegThumbnail;
+        try {
+            jpegThumbnail = await fs.promises.readFile(thumbPath);
+        } catch {
+            jpegThumbnail = undefined;
+        }
+        const outputFileName = sanitizePdfFileName(cached.fileName || 'processed.pdf');
         for (const targetJid of targets) {
             await sock.sendMessage(targetJid, {
                 document: { url: outputPath },
                 mimetype: 'application/pdf',
-                fileName: cached.fileName || 'processed.pdf'
+                fileName: outputFileName,
+                ...(jpegThumbnail ? { jpegThumbnail } : {})
             });
         }
         console.log(`[PDF-REACTION] processed and sent ${cached.fileName || cacheKey} to ${targets.length} target(s)`);
@@ -188,6 +212,7 @@ async function malik_processPdfReaction(sock, cached, cacheKey, targets) {
     } finally {
         await fs.promises.rm(inputPath, { force: true }).catch(() => {});
         await fs.promises.rm(outputPath, { force: true }).catch(() => {});
+        await fs.promises.rm(thumbPath, { force: true }).catch(() => {});
         malik_pdfCache.delete(cacheKey);
         malik_pdfReactionRuns.delete(cacheKey);
     }

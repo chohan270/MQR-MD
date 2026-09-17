@@ -1,3 +1,4 @@
+import io
 import os
 import sys
 import tempfile
@@ -77,6 +78,29 @@ class EpaperRulesTest(unittest.TestCase):
 
             reader = PdfReader(output_path)
             self.assertEqual(len(reader.pages), 3)
+
+    def test_mw_pdf_keeps_original_filename_and_generates_thumbnail(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, 'TheNews Lahore 28August.pdf')
+            output_path = os.path.join(tmpdir, 'processed.pdf')
+
+            image = Image.new('RGB', (1200, 1800), 'white')
+            image.save(input_path, format='PDF')
+
+            import mw
+
+            mw.process_pdf(input_path, output_path)
+
+            self.assertTrue(os.path.exists(output_path))
+            self.assertTrue(os.path.exists(output_path.replace('.pdf', '.thumb.jpg')))
+            self.assertTrue(os.path.getsize(output_path.replace('.pdf', '.thumb.jpg')) > 0)
+
+    def test_mw_clean_filename_removes_mw_marker(self):
+        import mw
+
+        self.assertEqual(mw.clean_filename('TheNews MW Lahore 28August.pdf'), 'TheNews Lahore 28August.pdf')
+        self.assertEqual(mw.clean_filename('MW TheNews Lahore 28August.pdf'), 'TheNews Lahore 28August.pdf')
+        self.assertEqual(mw.clean_filename('TheNews Lahore 28August.pdf'), 'TheNews Lahore 28August.pdf')
 
     def test_registry_includes_mashriq_akhbar_and_pakistan_today(self):
         import epaper_registry
