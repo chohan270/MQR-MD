@@ -24,8 +24,8 @@ function sanitizePdfFileName(fileName) {
     const extension = extMatch ? extMatch[1].toLowerCase() : '.pdf';
     const base = extMatch ? raw.slice(0, -extMatch[1].length) : raw;
     const cleaned = base
-        .replace(/(?i)(?:^|[\s._-])mw(?:[\s._-]|$)/g, ' ')
-        .replace(/(?i)(?:^|[\s._-])m\.?w\.?(?:[\s._-]|$)/g, ' ')
+        .replace(/(?:^|[\s._-])mw(?:[\s._-]|$)/gi, ' ')
+        .replace(/(?:^|[\s._-])m\.?w\.?(?:[\s._-]|$)/gi, ' ')
         .replace(/[\s._-]+/g, ' ')
         .replace(/^\s+|\s+$/g, '')
         .replace(/^[._-]+|[._-]+$/g, '');
