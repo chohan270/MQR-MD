@@ -52,13 +52,13 @@ module.exports = {
             const mwAction = mwArgs[0]?.toLowerCase();
             const items = await pdfQueue.listItems(sessionId);
             if (!mwAction || mwAction === 'list') {
-                if (!items.length) return await sock.sendMessage(from, { text: '📥 Last 8 hours mein koi pending PDF nahi hai.' }, { quoted: malik_msg });
+                if (!items.length) return await sock.sendMessage(from, { text: '📥 Last 6 hours mein koi pending PDF nahi hai.' }, { quoted: malik_msg });
                 const lines = items.map((item, index) => {
                     const source = item.remoteJid?.endsWith('@g.us') ? `group ${item.remoteJid}` : `chat ${item.remoteJid}`;
                     return `${index + 1}. ${item.fileName}\n   ${source} | ${new Date(item.receivedAt).toLocaleString('en-GB', { timeZone: 'Asia/Karachi' })}`;
                 });
                 return await sock.sendMessage(from, {
-                    text: `📋 *PDF Queue (last 8 hours)*\n\n${lines.join('\n')}\n\nUse: *.mw process 1,2,3* or *.mw process all*`
+                    text: `📋 *PDF Queue (last 6 hours)*\n\n${lines.join('\n')}\n\nUse: *.mw process 1,2,3* or *.mw process all*`
                 }, { quoted: malik_msg });
             }
 

@@ -134,5 +134,15 @@ class EpaperRulesTest(unittest.TestCase):
         self.assertEqual(config['script'], 'leadpakistan.py')
         self.assertEqual(config['available_after'], '08:00')
 
+    def test_daily_ausaf_runs_configured_editions_after_publication_time(self):
+        import epaper_registry
+
+        config = epaper_registry.NEWSPAPERS['dailyausaf']
+        self.assertEqual(config['available_after'], '11:30')
+        self.assertEqual(config['extra_args'], [
+            '--editions', 'Islamabad', 'Lahore', 'Peshawar', 'Gilgit_Baltistan',
+            'London', 'Muzafarabad', 'Karachi',
+        ])
+
 if __name__ == '__main__':
     unittest.main()

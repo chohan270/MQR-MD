@@ -233,7 +233,11 @@ NEWSPAPERS = {
         "script": "dailyausaf.py",
         "mode": "argparse",
         "batch": "baqi",
-        "available_after": "08:00",
+        "extra_args": [
+            "--editions", "Islamabad", "Lahore", "Peshawar", "Gilgit_Baltistan",
+            "London", "Muzafarabad", "Karachi",
+        ],
+        "available_after": "11:30",
     },
     "dailyk2": {
         "display": "Daily K2",

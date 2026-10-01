@@ -162,12 +162,12 @@ const malik_pdfQueueSchema = new mongoose.Schema({
     mimetype: { type: String, default: 'application/pdf' },
     receivedAt: { type: Date, default: Date.now },
     status: { type: String, enum: ['pending', 'processing', 'sent', 'failed'], default: 'pending' },
+    processingAt: { type: Date, default: null },
     error: { type: String, default: '' },
     processedAt: { type: Date, default: null }
 });
-malik_pdfQueueSchema.index({ receivedAt: 1 }, { expireAfterSeconds: 86400 });
-
 let isConnected = false;
+const pdfQueueIndexMigrations = new Map();
 
 // ---------------------------------------------------------------------------
 // DYNAMIC MODEL HELPER
@@ -199,6 +199,32 @@ function getModel(sessionId, type) {
         case 'PdfQueue': return mongoose.model(modelName, malik_pdfQueueSchema, collectionName);
         default: throw new Error(`Unknown model type: ${type}`);
     }
+}
+
+async function ensurePdfQueuePersistence(sessionId) {
+    const key = sessionId || 'malik_session';
+    if (!pdfQueueIndexMigrations.has(key)) {
+        const migration = (async () => {
+            const Model = getModel(sessionId, 'PdfQueue');
+            let indexes = [];
+            try {
+                indexes = await Model.collection.indexes();
+            } catch (error) {
+                if (error.codeName !== 'NamespaceNotFound') throw error;
+            }
+            for (const index of indexes) {
+                if (index.key?.receivedAt === 1 && index.expireAfterSeconds !== undefined) {
+                    await Model.collection.dropIndex(index.name);
+                }
+            }
+            await Model.collection.createIndex({ receivedAt: 1 });
+        })().catch((error) => {
+            pdfQueueIndexMigrations.delete(key);
+            throw error;
+        });
+        pdfQueueIndexMigrations.set(key, migration);
+    }
+    await pdfQueueIndexMigrations.get(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -780,6 +806,7 @@ async function malik_clearEpaperSentToday(sessionId, date) {
 async function malik_addPdfQueueItem(sessionId, item) {
     if (!isConnected) return null;
     try {
+        await ensurePdfQueuePersistence(sessionId);
         const Model = getModel(sessionId, 'PdfQueue');
         return await Model.findOneAndUpdate(
             { messageKey: item.messageKey },
@@ -795,8 +822,17 @@ async function malik_addPdfQueueItem(sessionId, item) {
 async function malik_listPdfQueue(sessionId, since) {
     if (!isConnected) return [];
     try {
+        await ensurePdfQueuePersistence(sessionId);
         const Model = getModel(sessionId, 'PdfQueue');
-        return await Model.find({ receivedAt: { $gte: since }, status: { $in: ['pending', 'failed'] } })
+        const staleBefore = new Date(Date.now() - 15 * 60 * 1000);
+        const filter = {
+            $or: [
+                { status: { $in: ['pending', 'failed'] } },
+                { status: 'processing', $or: [{ processingAt: null }, { processingAt: { $lte: staleBefore } }] }
+            ]
+        };
+        if (since) filter.receivedAt = { $gte: since };
+        return await Model.find(filter)
             .sort({ receivedAt: 1 }).lean();
     } catch (e) {
         console.error('DB Error listPdfQueue:', e);
@@ -807,10 +843,18 @@ async function malik_listPdfQueue(sessionId, since) {
 async function malik_claimPdfQueueItem(sessionId, id) {
     if (!isConnected) return null;
     try {
+        await ensurePdfQueuePersistence(sessionId);
         const Model = getModel(sessionId, 'PdfQueue');
+        const staleBefore = new Date(Date.now() - 15 * 60 * 1000);
         return await Model.findOneAndUpdate(
-            { _id: id, status: { $in: ['pending', 'failed'] } },
-            { $set: { status: 'processing', error: '' } },
+            {
+                _id: id,
+                $or: [
+                    { status: { $in: ['pending', 'failed'] } },
+                    { status: 'processing', $or: [{ processingAt: null }, { processingAt: { $lte: staleBefore } }] }
+                ]
+            },
+            { $set: { status: 'processing', processingAt: new Date(), error: '' } },
             { returnDocument: 'after' }
         ).lean();
     } catch (e) {
@@ -822,13 +866,32 @@ async function malik_claimPdfQueueItem(sessionId, id) {
 async function malik_updatePdfQueueItem(sessionId, id, status, error = '') {
     if (!isConnected) return false;
     try {
+        await ensurePdfQueuePersistence(sessionId);
         const Model = getModel(sessionId, 'PdfQueue');
         await Model.updateOne({ _id: id }, {
-            $set: { status, error: String(error || '').slice(0, 1000), processedAt: status === 'sent' ? new Date() : null }
+            $set: {
+                status,
+                processingAt: status === 'processing' ? new Date() : null,
+                error: String(error || '').slice(0, 1000),
+                processedAt: status === 'sent' ? new Date() : null
+            }
         });
         return true;
     } catch (e) {
         console.error('DB Error updatePdfQueueItem:', e);
+        return false;
+    }
+}
+
+async function malik_deletePdfQueueItem(sessionId, id) {
+    if (!isConnected) return false;
+    try {
+        await ensurePdfQueuePersistence(sessionId);
+        const Model = getModel(sessionId, 'PdfQueue');
+        await Model.deleteOne({ _id: id });
+        return true;
+    } catch (e) {
+        console.error('DB Error deletePdfQueueItem:', e);
         return false;
     }
 }
@@ -877,5 +940,6 @@ module.exports = {
     malik_addPdfQueueItem,
     malik_listPdfQueue,
     malik_claimPdfQueueItem,
-    malik_updatePdfQueueItem
+    malik_updatePdfQueueItem,
+    malik_deletePdfQueueItem
 };

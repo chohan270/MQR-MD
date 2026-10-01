@@ -9,10 +9,11 @@ const {
     malik_listPdfQueue,
     malik_claimPdfQueueItem,
     malik_updatePdfQueueItem,
+    malik_deletePdfQueueItem,
     malik_getEpaperConfig
 } = require('./database');
 
-const PDF_QUEUE_RETENTION_HOURS = 8;
+const PDF_QUEUE_RETENTION_HOURS = 6;
 const RETENTION_MS = PDF_QUEUE_RETENTION_HOURS * 60 * 60 * 1000;
 const messageCache = new Map();
 let processingTail = Promise.resolve();
@@ -128,6 +129,7 @@ async function processOne(sock, sessionId, item, targets) {
             });
         }
         await malik_updatePdfQueueItem(sessionId, claimed._id, 'sent');
+        await malik_deletePdfQueueItem(sessionId, claimed._id);
         return { status: 'sent', fileName: claimed.fileName };
     } catch (error) {
         await malik_updatePdfQueueItem(sessionId, claimed._id, 'failed', error.message);
@@ -143,10 +145,11 @@ async function processItems(sock, sessionId, ids) {
     const cfg = await malik_getEpaperConfig(sessionId);
     const targets = cfg?.targetJids || [];
     if (!targets.length) throw new Error('E-paper target groups are not configured');
-    const items = await malik_listPdfQueue(sessionId, new Date(Date.now() - RETENTION_MS));
+    const items = await malik_listPdfQueue(sessionId);
+    const recentItems = await malik_listPdfQueue(sessionId, new Date(Date.now() - RETENTION_MS));
     const selected = ids === 'all'
         ? items
-        : items.filter((item, index) => ids.includes(String(index + 1)) || ids.includes(String(item._id)));
+        : recentItems.filter((item, index) => ids.includes(String(index + 1)) || ids.includes(String(item._id)));
     const run = processingTail.then(async () => {
         const results = [];
         for (const item of selected) results.push(await processOne(sock, sessionId, item, targets));
