@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
@@ -17,6 +18,36 @@ import wm  # noqa: E402
 
 
 class EpaperRulesTest(unittest.TestCase):
+    def test_front_watermark_preserves_original_page_content(self):
+        source = io.BytesIO()
+        from reportlab.pdfgen import canvas
+
+        pdf = canvas.Canvas(source, pagesize=(200, 300))
+        pdf.drawString(20, 40, 'Original page content')
+        pdf.save()
+        source.seek(0)
+
+        reader = PdfReader(source)
+        settings = (wm.WATERMARK_PNG, 25, 0.1, 'top-right', 100)
+        with patch.object(wm, 'pick_watermark_settings', return_value=settings):
+            watermarked_page, _ = wm.build_watermarked_front_page(reader)
+
+        self.assertIn('Original page content', watermarked_page.extract_text())
+        self.assertEqual(float(watermarked_page.mediabox.width), 200)
+        self.assertEqual(float(watermarked_page.mediabox.height), 300)
+        self.assertTrue(watermarked_page.images)
+
+    def test_mw_front_watermark_uses_shared_page_overlay(self):
+        import mw
+
+        page = PdfWriter().add_blank_page(width=200, height=300)
+        with patch.object(wm, 'build_watermarked_front_page_for_page', return_value=(page, Image.new('RGB', (1, 1)))) as overlay:
+            result, preview = mw.build_front_watermark(page)
+
+        overlay.assert_called_once_with(page)
+        self.assertIs(result, page)
+        self.assertEqual(preview.size, (1, 1))
+
     def test_rejects_previous_day_dates_and_accepts_today(self):
         today = datetime.now().date()
         prev_day = today - timedelta(days=1)

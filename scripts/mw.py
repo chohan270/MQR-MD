@@ -10,9 +10,7 @@ import os
 import re
 from pathlib import Path
 
-from PIL import Image
 from pypdf import PdfReader, PdfWriter
-from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 import wm
@@ -132,16 +130,7 @@ def remove_bottom_watermark(pages):
 
 
 def build_front_watermark(page):
-    images = page.images
-    if not images:
-        return None, None
-    image = images[0].image.convert("RGB")
-    png_path, width, margin, position, opacity = wm.pick_watermark_settings(image)
-    image = wm.apply_watermark(image, png_path, width, margin, position, opacity)
-    buffer = io.BytesIO()
-    image.save(buffer, format="PDF")
-    buffer.seek(0)
-    return PdfReader(buffer).pages[0], image
+    return wm.build_watermarked_front_page_for_page(page)
 
 
 def save_front_page_thumbnail(image, output_path):

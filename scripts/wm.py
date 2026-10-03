@@ -9,10 +9,8 @@ Ye tool AAP KI PEHLE SE MAUJOOD PDFs par kaam karta hai.
 
 YE 2 CHEEZEIN KARTA HAI:
 ------------------------
-1) WATERMARK: SIRF PEHLE PAGE (front page, jahan epaper ka naam likha
-   hota hai) par watermark PNG permanently "flatten" (hard-burn) kar
-   deta hai. BAAKI pages ko HAATH TAK NAHI LAGATA -- woh original PDF
-   se bilkul jaisi ki taisi (byte-for-byte) copy hoti hain.
+1) WATERMARK: SIRF PEHLE PAGE par watermark PNG ko PDF overlay ki tarah
+   lagata hai. Page ka original text, images aur layout preserve rehta hai.
 
    WATERMARK LOGIC -- SAARE epapers par same rule (Express ho ya koi
    bhi aur naam):
@@ -22,8 +20,7 @@ YE 2 CHEEZEIN KARTA HAI:
        * Agar header edge ke sath (bina white space ke) lag raha ho
          -> pbk.png laga do, TOP-RIGHT corner par (jaisa pehle tha).
 
-   Dono cases mein watermark hard-burned/flatten hoti hai (permanent,
-   PNG layer nahi -- image ke andar seedha bake ho jati hai).
+   Dono cases mein watermark PDF mein permanently merge hoti hai.
 
 2) MERGE: PDF ke bilkul AAKHIR mein EXTRA_LAST_PDF jod deta hai --
    isliye final file size sirf usi extra PDF jitni barhti hai, baaki
@@ -44,8 +41,12 @@ import io
 import os
 import time
 
+import pypdfium2 as pdfium
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import RectangleObject
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas
 
 # ===================== CONFIG =====================
 
@@ -167,26 +168,82 @@ def apply_watermark(img, png_path, width_percent, margin_percent, position, opac
     return canvas.convert("RGB")   # flatten -> ab permanent (hard-burned) hai
 
 
-def build_watermarked_front_page(reader):
-    """Page 1 ki embedded image nikaal kar sahi watermark laga ke,
-    usse ek naya single-page PDF object bana deta hai. Agar page 1
-    mein koi image na mile to (None, None) deta hai (front page bhi
-    as-is copy ho jayega). Watermark ke baad ki image bhi wapis karta
-    hai taake usi se WhatsApp preview thumbnail bana sakein."""
-    front_page = reader.pages[0]
-    imgs = front_page.images
-    if not imgs:
-        return None, None
+def render_page_image(page):
+    """PDF page ko sirf watermark placement detect karne ke liye render karta hai."""
+    buffer = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_page(page)
+    writer.write(buffer)
 
-    img = imgs[0].image.convert("RGB")
+    document = pdfium.PdfDocument(buffer.getvalue())
+    try:
+        return document[0].render(scale=1).to_pil().convert("RGB")
+    finally:
+        document.close()
 
+
+def build_front_page_overlay(page, settings):
+    """Watermark PNG ko original page dimensions par ek transparent PDF overlay banata hai."""
+    png_path, width_percent, margin_percent, position, opacity_percent = settings
+    if not png_path or not os.path.exists(png_path):
+        return None
+
+    page_box = page.mediabox
+    left = float(page_box.left)
+    bottom = float(page_box.bottom)
+    page_width = float(page_box.width)
+    page_height = float(page_box.height)
+
+    with Image.open(png_path) as source:
+        watermark = source.convert("RGBA")
+    if opacity_percent < 100:
+        alpha = watermark.getchannel("A")
+        alpha = alpha.point(lambda value: int(value * (opacity_percent / 100)))
+        watermark.putalpha(alpha)
+
+    watermark_width = page_width * width_percent / 100
+    watermark_height = watermark.height * watermark_width / watermark.width
+    margin_x = page_width * margin_percent / 100
+    margin_y = page_height * margin_percent / 100
+    x = (page_width - watermark_width) / 2 if position == "top-center" else page_width - watermark_width - margin_x
+    y = page_height - watermark_height - margin_y
+
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(page_width, page_height))
+    pdf.drawImage(
+        ImageReader(watermark),
+        left + x,
+        bottom + y,
+        width=watermark_width,
+        height=watermark_height,
+        mask="auto",
+    )
+    pdf.save()
+    buffer.seek(0)
+    overlay = PdfReader(buffer).pages[0]
+    overlay.mediabox = RectangleObject(
+        [page_box.left, page_box.bottom, page_box.right, page_box.top]
+    )
+    return overlay
+
+
+def build_watermarked_front_page_for_page(front_page):
+    """Original first page preserve karke us par watermark overlay merge karta hai."""
+    img = render_page_image(front_page)
     png_path, width_percent, margin_percent, position, opacity_percent = pick_watermark_settings(img)
-    img = apply_watermark(img, png_path, width_percent, margin_percent, position, opacity_percent)
+    settings = (png_path, width_percent, margin_percent, position, opacity_percent)
+    overlay = build_front_page_overlay(front_page, settings)
+    if overlay is not None:
+        writer = PdfWriter()
+        writer.add_page(front_page)
+        front_page = writer.pages[0]
+        front_page.merge_page(overlay)
+        img = apply_watermark(img, *settings)
+    return front_page, img
 
-    buf = io.BytesIO()
-    img.save(buf, format="PDF")
-    buf.seek(0)
-    return PdfReader(buf).pages[0], img
+
+def build_watermarked_front_page(reader):
+    return build_watermarked_front_page_for_page(reader.pages[0])
 
 
 def make_thumbnail_jpeg(img, max_width=220):

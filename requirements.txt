@@ -1,6 +1,7 @@
 requests
 pillow
 pypdf
+pypdfium2
 curl_cffi
 img2pdf
 beautifulsoup4
