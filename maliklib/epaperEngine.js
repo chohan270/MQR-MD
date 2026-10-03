@@ -205,6 +205,7 @@ async function runSequentialEditions(keys, onItem) {
 async function sendFiles(items, dateStr) {
     const cfg = await malik_getEpaperConfig(currentSessionId);
     const targets = cfg?.targetJids || [];
+    const primaryJid = targets.includes(cfg?.primaryJid) ? cfg.primaryJid : null;
     let sentCount = 0;
 
     for (const { key, path: filePath } of items) {
@@ -238,23 +239,43 @@ async function sendFiles(items, dateStr) {
         }
 
         let anySuccess = false;
-        for (const jid of targets) {
+        if (primaryJid) {
             try {
-                // { url: <local path> } -> Baileys STREAMS the file straight
-                // from disk instead of loading the whole PDF into RAM. On a
-                // 512MB Heroku Basic dyno with several newspapers going out
-                // in parallel, this keeps memory usage flat instead of
-                // stacking up multiple full PDF buffers at once.
-                await currentSock.sendMessage(jid, {
+                const primaryMessage = await currentSock.sendMessage(primaryJid, {
                     document: { url: filePath },
                     mimetype: 'application/pdf',
                     fileName,
                     ...(jpegThumbnail ? { jpegThumbnail } : {})
                 });
                 anySuccess = true;
-                await new Promise((r) => setTimeout(r, 700)); // gentle pacing between groups
+                await new Promise((r) => setTimeout(r, 700));
+
+                for (const jid of targets.filter((targetJid) => targetJid !== primaryJid)) {
+                    try {
+                        await currentSock.sendMessage(jid, { forward: primaryMessage });
+                        await new Promise((r) => setTimeout(r, 700));
+                    } catch (e) {
+                        console.error(`[epaper] forward failed -> ${jid} (${fileName}):`, e.message);
+                    }
+                }
             } catch (e) {
-                console.error(`[epaper] send failed -> ${jid} (${fileName}):`, e.message);
+                console.error(`[epaper] primary send failed -> ${primaryJid} (${fileName}):`, e.message);
+            }
+        } else {
+            for (const jid of targets) {
+                try {
+                    // Stream the PDF from disk instead of loading it into RAM.
+                    await currentSock.sendMessage(jid, {
+                        document: { url: filePath },
+                        mimetype: 'application/pdf',
+                        fileName,
+                        ...(jpegThumbnail ? { jpegThumbnail } : {})
+                    });
+                    anySuccess = true;
+                    await new Promise((r) => setTimeout(r, 700));
+                } catch (e) {
+                    console.error(`[epaper] send failed -> ${jid} (${fileName}):`, e.message);
+                }
             }
         }
 
@@ -536,12 +557,15 @@ async function getStatusText(sessionId) {
     let text = `╭━━━〔 🗞️ *EPAPER CONTROL* 〕━━━╮\n\n`;
     text += `*AUTO UPLOAD:* ${status}\n`;
     text += `*Target Groups:*\n${targets}\n\n`;
+    text += `*Primary Group:* ${cfg.primaryJid || 'Not set (send to each target)'}\n\n`;
     text += `*Last Run:* ${cfg.lastRun ? new Date(cfg.lastRun).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }) : 'Never'}\n`;
     text += `*Last Summary:* ${cfg.lastRunSummary || '—'}\n\n`;
     text += `*Newspaper Timings (Pakistan time):*\n${EPAPER_TIMING_TEXT.map((line) => `  • ${line}`).join('\n')}\n\n`;
     text += `*Schedule:* Express 3:00 AM (Sun 5:30 AM) • Baqi 4:30/5:00 AM • failed newspapers retried every 15 min all day\n\n`;
     text += `*Commands:*\n`;
     text += `• \`.af epaper set jid1, jid2\` — set target groups\n`;
+    text += `• \`.af epaper primary jid\` — upload here first, then forward to other targets\n`;
+    text += `• \`.af epaper primary off\` — clear primary group\n`;
     text += `• \`.af epaper on/off\` — enable/disable\n`;
     text += `• \`.af epaper run\` — run everything right now\n`;
     text += `• \`.af epaper run <key>\` — test ONE newspaper (e.g. \`.af epaper run jang\`)\n`;

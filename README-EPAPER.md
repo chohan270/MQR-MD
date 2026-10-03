@@ -23,8 +23,8 @@ scripts/epaper_scheduler.py
     │  5. Result JSON print karta hai (EPAPER_RESULT_JSON:{...})
     ▼
 epaperEngine.js wapis control leta hai
-    │  1. WhatsApp groups ko document bhejta hai (fresh sendMessage — NO
-    │     "Forwarded" tag)
+    │  1. Primary group set ho to pehle wahan upload karta hai, phir baqi
+    │     target groups ko forward karta hai; warna har target par direct send
     │  2. MongoDB mein "sent" mark karta hai (duplicate-skip)
     │  3. /tmp se file delete karta hai (WhatsApp group se NAHI)
     │  4. Jo newspaper fail ho, use "pendingRetries" list mein daal deta hai
@@ -41,7 +41,7 @@ karta hai, jab tak maxRetries (default 4) khatam na ho.
 | 5:30 AM (Sunday only) | Express (Sunday ko baad mein) |
 | 4:30 AM (daily) | Early baqi newspapers download + watermark; late papers apne publication window tak hold |
 | 5:00 AM (daily) | Baqi 25 newspapers: jo ban chuki unko send + delete |
-| 8:00 AM ke baad | Mashriq, Pakistan Today, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain: aaj ki copy available hone par retry/send |
+| 8:00 AM ke baad | Mashriq, Pakistan Today, Islamk, Aaj, Nai Baat, Nawaiwaqt, Ausaf, The Nation, PakObserver, Jasarat, Khabrain: aaj ki copy available hone par retry/send; Khabrain ke liye 2+ pages lazmi |
 | 8:00 AM ke baad | Lead Pakistan aur The Patriot: website par aaj ki edition milte hi retry/send |
 | 10:00 AM ke baad | Mashriq Akhbar: aaj ki copy available hone par retry/send |
 | 3:00 PM ke baad | Kawish: aaj ki copy available hone par retry/send |
@@ -67,6 +67,8 @@ kar sakta hai — ya `.env`/DB mein defined sudo).
 
 ```
 .af epaper set 12345@g.us, 67890@g.us    → target groups set karo (multiple, comma-separated)
+.af epaper primary 12345@g.us            → pehle is group mein upload, phir baqi targets ko forward
+.af epaper primary off                   → primary group clear karo
 .af epaper on                            → auto-system ON
 .af epaper off                           → auto-system OFF
 .af epaper run                           → abhi turant Express + Baqi + retries chalao (manual)

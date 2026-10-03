@@ -123,6 +123,7 @@ const malik_globalAutoForwardSchema = new mongoose.Schema({
 const malik_epaperConfigSchema = new mongoose.Schema({
     enabled: { type: Boolean, default: false },
     targetJids: { type: [String], default: [] },
+    primaryJid: { type: String, default: '' },
     lastRun: { type: Date, default: null },
     lastRunSummary: { type: String, default: '' },
     // { batch: 'express'|'baqi', key: 'jang', date: 'YYYY-MM-DD', attempts: 1 }

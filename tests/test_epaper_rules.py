@@ -36,6 +36,25 @@ class EpaperRulesTest(unittest.TestCase):
         for name in previous_names:
             self.assertFalse(epaper_scheduler.has_current_date(name), f'{name} should be rejected')
 
+    def test_khabrain_requires_more_than_one_page(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            one_page_path = os.path.join(tmpdir, 'khabrain-one-page.pdf')
+            multi_page_path = os.path.join(tmpdir, 'khabrain-multi-page.pdf')
+
+            one_page = PdfWriter()
+            one_page.add_blank_page(width=200, height=300)
+            with open(one_page_path, 'wb') as fh:
+                one_page.write(fh)
+
+            multi_page = PdfWriter()
+            multi_page.add_blank_page(width=200, height=300)
+            multi_page.add_blank_page(width=200, height=300)
+            with open(multi_page_path, 'wb') as fh:
+                multi_page.write(fh)
+
+            self.assertFalse(epaper_scheduler.has_multiple_pdf_pages(one_page_path))
+            self.assertTrue(epaper_scheduler.has_multiple_pdf_pages(multi_page_path))
+
     def test_process_pdf_keeps_original_page_count(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             input_path = os.path.join(tmpdir, 'source.pdf')

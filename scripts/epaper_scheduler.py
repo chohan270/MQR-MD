@@ -42,6 +42,7 @@ import sys
 import time
 import traceback
 from datetime import datetime
+from pypdf import PdfReader
 
 try:
     from zoneinfo import ZoneInfo
@@ -129,6 +130,14 @@ def has_current_date(filename):
     return bool(candidates) and any(candidate == expected for candidate in candidates)
 
 
+def has_multiple_pdf_pages(filename):
+    try:
+        return len(PdfReader(filename).pages) > 1
+    except Exception as exc:
+        log(f"Could not check PDF page count for {os.path.basename(filename)}: {exc}")
+        return False
+
+
 def run_one(key, workdir_root, outbox_dir):
     cfg = NEWSPAPERS.get(key)
     if not cfg:
@@ -189,6 +198,16 @@ def run_one(key, workdir_root, outbox_dir):
             log(f"❌ {display}: rejecting explicit previous-date PDF {os.path.basename(raw_pdf)}")
             os.remove(raw_pdf)
     raw_pdfs = dated_pdfs
+
+    if key == "khabrain":
+        complete_pdfs = []
+        for raw_pdf in raw_pdfs:
+            if has_multiple_pdf_pages(raw_pdf):
+                complete_pdfs.append(raw_pdf)
+            else:
+                log(f"❌ {display}: incomplete edition ({os.path.basename(raw_pdf)} has fewer than 2 pages)")
+                os.remove(raw_pdf)
+        raw_pdfs = complete_pdfs
 
     elapsed = round(time.time() - t0, 1)
 

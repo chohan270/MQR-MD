@@ -129,9 +129,45 @@ module.exports = {
                 if (!jids.length) {
                     return await sock.sendMessage(from, { text: commandPanel('EPAPER CONTROL', ['❌ No valid JIDs found.']) }, { quoted: malik_msg });
                 }
-                await malik_updateEpaperConfig(sessionId, { targetJids: jids });
+                const config = await malik_getEpaperConfig(sessionId);
+                const clearPrimary = config?.primaryJid && !jids.includes(config.primaryJid);
+                await malik_updateEpaperConfig(sessionId, {
+                    targetJids: jids,
+                    ...(clearPrimary ? { primaryJid: '' } : {})
+                });
                 return await sock.sendMessage(from, {
-                    text: commandPanel('EPAPER CONTROL', [`✅ Target groups updated (${jids.length})`, ...jids.map((j, i) => `${i + 1}. ${j}`)])
+                    text: commandPanel('EPAPER CONTROL', [
+                        `✅ Target groups updated (${jids.length})`,
+                        ...jids.map((j, i) => `${i + 1}. ${j}`),
+                        ...(clearPrimary ? ['Primary cleared because it is not in the new target list.'] : [])
+                    ])
+                }, { quoted: malik_msg });
+            }
+
+            if (sub === 'primary') {
+                const raw = malik_args.slice(2).join(' ').trim();
+                if (raw.toLowerCase() === 'off' || raw.toLowerCase() === 'clear') {
+                    await malik_updateEpaperConfig(sessionId, { primaryJid: '' });
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('EPAPER CONTROL', ['✅ Primary group cleared.'])
+                    }, { quoted: malik_msg });
+                }
+
+                const jids = parseJids(raw);
+                if (jids.length !== 1) {
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('EPAPER CONTROL', ['❌ Provide one target JID, or use `primary off`.', 'Example: .af epaper primary 12345@g.us'])
+                    }, { quoted: malik_msg });
+                }
+                const config = await malik_getEpaperConfig(sessionId);
+                if (!config?.targetJids?.includes(jids[0])) {
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('EPAPER CONTROL', ['❌ Primary must already be in the e-paper target list.'])
+                    }, { quoted: malik_msg });
+                }
+                await malik_updateEpaperConfig(sessionId, { primaryJid: jids[0] });
+                return await sock.sendMessage(from, {
+                    text: commandPanel('EPAPER CONTROL', [`✅ Primary group set: ${jids[0]}`, 'PDF will upload here first, then forward to the other targets.'])
                 }, { quoted: malik_msg });
             }
 
