@@ -10,7 +10,9 @@ import os
 import re
 from pathlib import Path
 
+import pypdfium2 as pdfium
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import RectangleObject
 from reportlab.pdfgen import canvas
 
 import wm
@@ -20,12 +22,8 @@ DARKNESS_THRESHOLD = 70
 PROMO_KEYWORDS = [
     "whatsapp", "whats app", "social media", "join our group", "join group", "group link"
 ]
-BOTTOM_WATERMARK_KEYWORDS = ["social media pakistan", "4938217"]
-PAD_X = 2
-PAD_Y_TOP = 1
-PAD_Y_BOTTOM = 1
-WIDTH_MULTIPLIER = 0.52
-Y_OFFSET = -8
+BOTTOM_WATERMARK_TEXT = "Social Media Pakistan 0342-4938217"
+WATERMARK_PATCH_PADDING = 2
 
 
 def clean_filename(filename):
@@ -53,7 +51,9 @@ def is_promo_page(page):
         text = (page.extract_text() or "").lower()
     except Exception:
         text = ""
-    if any(keyword in text for keyword in PROMO_KEYWORDS):
+    watermark_pattern = r"social\s*media\s*pakistan\s*0342[\s-]*4938217"
+    text_without_watermark = re.sub(watermark_pattern, "", text)
+    if any(keyword in text_without_watermark for keyword in PROMO_KEYWORDS):
         return True
     try:
         images = page.images
@@ -80,40 +80,73 @@ def remove_promo_pages(pages):
 
 
 def find_watermark_boxes(page):
-    boxes = []
+    writer = PdfWriter()
+    writer.add_page(page)
+    buffer = io.BytesIO()
+    writer.write(buffer)
 
-    def apply_matrix(point, matrix):
-        x, y = point
-        a, b, c, d, e, f = matrix
-        return a * x + c * y + e, b * x + d * y + f
-
-    def visitor(text, cm, tm, font_dict, font_size):
-        if text.strip() and any(keyword in text.lower() for keyword in BOTTOM_WATERMARK_KEYWORDS):
-            x, y = apply_matrix((0, 0), tm)
-            x, y = apply_matrix((x, y), cm)
-            boxes.append((text, x, y, font_size or 12))
-
+    document = pdfium.PdfDocument(buffer.getvalue())
+    text_page = None
     try:
-        page.extract_text(visitor_text=visitor)
-    except Exception:
-        return []
-    return boxes
+        text_page = document[0].get_textpage()
+        text = text_page.get_text_range()
+        char_count = text_page.count_chars()
+        if len(text) != char_count:
+            text = "".join(text_page.get_text_range(index, 1) for index in range(char_count))
+
+        normalized = []
+        source_indices = []
+        for index, char in enumerate(text):
+            for normalized_char in char.casefold():
+                if normalized_char.isalnum():
+                    normalized.append(normalized_char)
+                    source_indices.append(index)
+
+        normalized_text = "".join(normalized)
+        target = "".join(char.casefold() for char in BOTTOM_WATERMARK_TEXT if char.isalnum())
+        boxes = []
+        offset = 0
+        while (match_start := normalized_text.find(target, offset)) != -1:
+            char_boxes = [
+                text_page.get_charbox(source_indices[index])
+                for index in range(match_start, match_start + len(target))
+            ]
+            char_boxes = [box for box in char_boxes if box[2] > box[0] and box[3] > box[1]]
+            if char_boxes:
+                boxes.append((
+                    min(box[0] for box in char_boxes),
+                    min(box[1] for box in char_boxes),
+                    max(box[2] for box in char_boxes),
+                    max(box[3] for box in char_boxes),
+                ))
+            offset = match_start + len(target)
+        return boxes
+    finally:
+        if text_page is not None:
+            text_page.close()
+        document.close()
 
 
-def build_patch_overlay(page_width, page_height, boxes):
+def build_patch_overlay(page_width, page_height, boxes, origin_x=0, origin_y=0):
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=(page_width, page_height))
     pdf.setFillColorRGB(1, 1, 1)
-    for text, x, y, font_size in boxes:
-        estimated_width = len(text) * font_size * WIDTH_MULTIPLIER
-        rect_x = max(0, x - PAD_X)
-        rect_y = max(0, y - (font_size * 0.25) + Y_OFFSET)
-        rect_w = min(page_width - rect_x, estimated_width + 2 * PAD_X)
-        rect_h = min(page_height - rect_y, (font_size * 0.8) + PAD_Y_TOP + PAD_Y_BOTTOM)
-        pdf.rect(rect_x, rect_y, rect_w, rect_h, fill=1, stroke=0)
+    for left, bottom, right, top in boxes:
+        rect_x = max(0, left - WATERMARK_PATCH_PADDING)
+        rect_y = max(0, bottom - WATERMARK_PATCH_PADDING)
+        rect_right = min(page_width, right + WATERMARK_PATCH_PADDING)
+        rect_top = min(page_height, top + WATERMARK_PATCH_PADDING)
+        pdf.rect(rect_x, rect_y, rect_right - rect_x, rect_top - rect_y, fill=1, stroke=0)
     pdf.save()
     buffer.seek(0)
-    return PdfReader(buffer).pages[0]
+    overlay = PdfReader(buffer).pages[0]
+    overlay.mediabox = RectangleObject([
+        origin_x,
+        origin_y,
+        origin_x + page_width,
+        origin_y + page_height,
+    ])
+    return overlay
 
 
 def remove_bottom_watermark(pages):
@@ -123,7 +156,13 @@ def remove_bottom_watermark(pages):
         if not boxes:
             continue
         mediabox = page.mediabox
-        patch = build_patch_overlay(float(mediabox.width), float(mediabox.height), boxes)
+        patch = build_patch_overlay(
+            float(mediabox.width),
+            float(mediabox.height),
+            boxes,
+            float(mediabox.left),
+            float(mediabox.bottom),
+        )
         page.merge_page(patch)
         covered += 1
     return covered

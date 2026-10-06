@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
+import pypdfium2 as pdfium
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
@@ -18,6 +19,54 @@ import wm  # noqa: E402
 
 
 class EpaperRulesTest(unittest.TestCase):
+    def test_mw_removes_brand_strip_text_at_different_positions_and_colors(self):
+        import mw
+
+        pages = []
+        expected_x = [42, 137]
+        for x, y, font_size, color in [
+            (42, 58, 10, (1, 0, 0)),
+            (137, 215, 18, (0, 0, 1)),
+        ]:
+            source = io.BytesIO()
+            from reportlab.pdfgen import canvas
+
+            pdf = canvas.Canvas(source, pagesize=(400, 500))
+            pdf.setFillColorRGB(*color)
+            pdf.setFont('Helvetica-Bold', font_size)
+            pdf.drawString(x, y, mw.BOTTOM_WATERMARK_TEXT)
+            pdf.save()
+            source.seek(0)
+            pages.append(PdfReader(source).pages[0])
+
+        boxes = [mw.find_watermark_boxes(page) for page in pages]
+        self.assertEqual(len(boxes[0]), 1)
+        self.assertEqual(len(boxes[1]), 1)
+        self.assertAlmostEqual(boxes[0][0][0], expected_x[0], delta=2)
+        self.assertAlmostEqual(boxes[1][0][0], expected_x[1], delta=2)
+        self.assertFalse(mw.is_promo_page(pages[0]))
+
+        mw.remove_bottom_watermark(pages)
+        writer = PdfWriter()
+        for page in pages:
+            writer.add_page(page)
+        output = io.BytesIO()
+        writer.write(output)
+
+        document = pdfium.PdfDocument(output.getvalue())
+        try:
+            for index, (left, bottom, right, top) in enumerate(box[0] for box in boxes):
+                pixmap = document[index].render(scale=2)
+                image = pixmap.to_pil().convert('RGB')
+                sample_x = round((left + right) * pixmap.width / 2 / 400)
+                sample_y = round((500 - (bottom + top) / 2) * pixmap.height / 500)
+                red, green, blue = image.getpixel((sample_x, sample_y))
+                self.assertGreaterEqual(red, 245)
+                self.assertGreaterEqual(green, 245)
+                self.assertGreaterEqual(blue, 245)
+        finally:
+            document.close()
+
     def test_front_watermark_preserves_original_page_content(self):
         source = io.BytesIO()
         from reportlab.pdfgen import canvas
@@ -97,7 +146,12 @@ class EpaperRulesTest(unittest.TestCase):
             with open(input_path, 'wb') as fh:
                 writer.write(fh)
 
-            wm.process_pdf(input_path, output_path)
+            original_branding = wm.EXTRA_LAST_PDF
+            wm.EXTRA_LAST_PDF = ""
+            try:
+                wm.process_pdf(input_path, output_path)
+            finally:
+                wm.EXTRA_LAST_PDF = original_branding
             reader = PdfReader(output_path)
 
             self.assertEqual(len(reader.pages), 2)
@@ -128,6 +182,53 @@ class EpaperRulesTest(unittest.TestCase):
 
             reader = PdfReader(output_path)
             self.assertEqual(len(reader.pages), 3)
+
+    def test_mw_cleans_newspaper_pages_but_leaves_appended_branding_page_untouched(self):
+        import mw
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, 'source.pdf')
+            brand_path = os.path.join(tmpdir, 'pbk.pdf')
+            output_path = os.path.join(tmpdir, 'output.pdf')
+            phrase = mw.BOTTOM_WATERMARK_TEXT
+
+            source_writer = PdfWriter()
+            for x, y in [(35, 35), (90, 90), (145, 145)]:
+                source = io.BytesIO()
+                from reportlab.pdfgen import canvas
+
+                pdf = canvas.Canvas(source, pagesize=(300, 400))
+                pdf.drawString(x, y, phrase)
+                pdf.save()
+                source.seek(0)
+                source_writer.add_page(PdfReader(source).pages[0])
+            with open(input_path, 'wb') as source_file:
+                source_writer.write(source_file)
+
+            brand_source = io.BytesIO()
+            from reportlab.pdfgen import canvas
+
+            pdf = canvas.Canvas(brand_source, pagesize=(300, 400))
+            pdf.drawString(35, 35, phrase)
+            pdf.save()
+            brand_source.seek(0)
+            brand_writer = PdfWriter()
+            brand_writer.add_page(PdfReader(brand_source).pages[0])
+            with open(brand_path, 'wb') as brand_file:
+                brand_writer.write(brand_file)
+
+            original_branding = wm.EXTRA_LAST_PDF
+            wm.EXTRA_LAST_PDF = brand_path
+            try:
+                mw.process_pdf(input_path, output_path)
+            finally:
+                wm.EXTRA_LAST_PDF = original_branding
+
+            result = PdfReader(output_path)
+            self.assertEqual(len(result.pages), 4)
+            branding_boxes = mw.find_watermark_boxes(result.pages[-1])
+            self.assertEqual(len(branding_boxes), 1)
+            self.assertAlmostEqual(branding_boxes[0][0], 35, delta=2)
 
     def test_mw_pdf_keeps_original_filename_and_generates_thumbnail(self):
         with tempfile.TemporaryDirectory() as tmpdir:
