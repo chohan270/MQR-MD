@@ -459,14 +459,14 @@ async function startSession(sessionId) {
 
         for (const malik_msg of incomingMessages) {
             try {
-                await handleIncomingMessage(malik_sock, sessionId, malik_msg);
+                await handleIncomingMessage(malik_sock, sessionId, malik_msg, malik_m.type);
             } catch (error) {
                 console.error(`[MESSAGE] unhandled message error: ${error.message}`);
             }
         }
     });
 
-    async function handleIncomingMessage(malik_sock, sessionId, malik_msg) {
+    async function handleIncomingMessage(malik_sock, sessionId, malik_msg, upsertType) {
         if (!malik_msg?.message) return;
 
         const malik_origin = malik_msg.key.remoteJid;
@@ -475,15 +475,26 @@ async function startSession(sessionId) {
         const malik_text = malik_getMessageText(malik_msg.message);
 
         if (malik_unwrapMessage(malik_msg.message).reactionMessage) {
-            // Reactions are intentionally ignored. PDF processing is controlled
-            // only through the owner's private .mw batch command.
+            // Reactions are intentionally ignored; PDF processing is handled
+            // on message arrival or through the owner's private .mw commands.
             return;
         }
 
         if (!malik_msg.key.fromMe && malik_isPdfDocument(malik_msg.message)) {
-            pdfQueue.rememberAndQueue(sessionId, malik_msg).catch((error) => {
-                console.error(`[PDF-QUEUE] could not save ${malik_msg.key.id}: ${error.message}`);
-            });
+            const queuePdf = upsertType === 'notify'
+                ? pdfQueue.processIncomingPdf(malik_sock, sessionId, malik_msg)
+                : pdfQueue.rememberAndQueue(sessionId, malik_msg);
+            queuePdf
+                .then((result) => {
+                    if (result?.status === 'failed') {
+                        console.error(`[PDF-QUEUE] automatic processing failed for ${malik_msg.key.id}: ${result.error}`);
+                    } else if (result?.status === 'duplicate') {
+                        console.log(`[PDF-QUEUE] skipped 24-hour duplicate: ${result.fileName}`);
+                    }
+                })
+                .catch((error) => {
+                    console.error(`[PDF-QUEUE] could not queue/process ${malik_msg.key.id}: ${error.message}`);
+                });
         }
 
         let globalCfg = null;

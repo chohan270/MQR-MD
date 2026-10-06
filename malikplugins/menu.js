@@ -7,7 +7,7 @@ module.exports = {
     category: 'Information',
     desc: 'Show all available commands',
     malik_handler: async (malik_sock, malik_origin, context) => {
-        const { malik_plugins, malik_sender } = context;
+        const { malik_plugins, malik_sender, malik_isOwner } = context;
         
         const categories = {};
         const handledCommands = new Set();
@@ -33,6 +33,15 @@ module.exports = {
             menuText += `┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n`;
         }
         
+        if (malik_isOwner) {
+            menuText += `┏━━━〔 📄 *PDF AUTOMATION* 〕━━━┓\n`;
+            menuText += `┃ 🔹 .mw menu — PDF controls\n`;
+            menuText += `┃ 🔹 .mw auto status/on/off\n`;
+            menuText += `┃ 🔹 .mw list / .mw process all\n`;
+            menuText += `┃ ℹ️ Use in the bot's private chat\n`;
+            menuText += `┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n`;
+        }
+
         menuText += `🌟 *MQR MD*  |  simple, sharp, ready`;
 
         await malik_sock.sendMessage(malik_origin, { 

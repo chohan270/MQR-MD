@@ -3,7 +3,7 @@
  * Auto-Forward Command with Global Support
  * MQR MD WhatsApp automation
  */
-const { malik_updateGroupSettings, malik_getGroupSettings, malik_getGlobalAutoForward, malik_updateGlobalAutoForward, malik_getEpaperConfig, malik_updateEpaperConfig, malik_clearEpaperSentToday } = require('../maliklib/database');
+const { malik_updateGroupSettings, malik_getGroupSettings, malik_getGlobalAutoForward, malik_updateGlobalAutoForward, malik_getEpaperConfig, malik_updateEpaperConfig, malik_clearEpaperSentToday, malik_countSharedPdfRecords } = require('../maliklib/database');
 const epaperEngine = require('../maliklib/epaperEngine');
 const pdfQueue = require('../maliklib/pdfQueue');
 
@@ -51,6 +51,59 @@ module.exports = {
             const mwArgs = malik_command === 'mw' ? malik_args : malik_args.slice(1);
             const mwAction = mwArgs[0]?.toLowerCase();
             const items = await pdfQueue.listItems(sessionId);
+            if (mwAction === 'menu') {
+                const config = await malik_getEpaperConfig(sessionId);
+                const enabled = config?.mwAutoEnabled !== false;
+                return await sock.sendMessage(from, {
+                    text: commandPanel('AUTOMATIC MW PDF', [
+                        `Auto processing: ${enabled ? 'ON' : 'OFF'}`,
+                        '',
+                        '.mw auto status — current status',
+                        '.mw auto on — process new group PDFs automatically',
+                        '.mw auto off — keep incoming PDFs in the manual queue',
+                        '.mw list — view recent pending PDFs',
+                        '.mw process all — manually process pending PDFs',
+                        '',
+                        'Same normalized filename is shared with .af epaper for 24-hour duplicate protection.',
+                        'Excluded groups: 120363026226973835@g.us, 923489517717-1546053015@g.us',
+                        'Excluded senders in those groups: 81131932283065@lid, 87424696897621@lid'
+                    ])
+                }, { quoted: malik_msg });
+            }
+            if (mwAction === 'auto') {
+                const setting = mwArgs[1]?.toLowerCase() || 'status';
+                if (!['on', 'off', 'status'].includes(setting)) {
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('AUTOMATIC MW PDF', ['❌ Usage: .mw auto on, .mw auto off, or .mw auto status'])
+                    }, { quoted: malik_msg });
+                }
+                if (setting !== 'status') {
+                    const updated = await malik_updateEpaperConfig(sessionId, { mwAutoEnabled: setting === 'on' });
+                    if (!updated) {
+                        return await sock.sendMessage(from, {
+                            text: commandPanel('AUTOMATIC MW PDF', ['❌ Could not save the setting. Check the MongoDB connection.'])
+                        }, { quoted: malik_msg });
+                    }
+                }
+                const config = await malik_getEpaperConfig(sessionId);
+                const enabled = config?.mwAutoEnabled !== false;
+                let activeRecords;
+                try {
+                    activeRecords = await malik_countSharedPdfRecords(sessionId);
+                } catch (error) {
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('AUTOMATIC MW PDF', [`❌ Could not read shared duplicate records: ${error.message}`])
+                    }, { quoted: malik_msg });
+                }
+                return await sock.sendMessage(from, {
+                    text: commandPanel('AUTOMATIC MW PDF', [
+                        `Auto processing: ${enabled ? 'ON' : 'OFF'}`,
+                        `Shared duplicate records active: ${activeRecords}`,
+                        `Target groups: ${config?.targetJids?.length || 0}`,
+                        'Duplicate window: 24 hours'
+                    ])
+                }, { quoted: malik_msg });
+            }
             if (!mwAction || mwAction === 'list') {
                 if (!items.length) return await sock.sendMessage(from, { text: '📥 Last 6 hours mein koi pending PDF nahi hai.' }, { quoted: malik_msg });
                 const lines = items.map((item, index) => {
@@ -71,6 +124,12 @@ module.exports = {
                     const sent = results.filter((result) => result.status === 'sent').length;
                     const failed = results.filter((result) => result.status === 'failed');
                     let report = `✅ Complete\n📤 Sent: ${sent}`;
+                    const duplicates = results.filter((result) => result.status === 'duplicate').length;
+                    if (duplicates) report += `\n⏭️ Duplicate PDFs skipped: ${duplicates}`;
+                    const partial = results.filter((result) => result.status === 'sent' && result.deliveryErrors?.length);
+                    if (partial.length) {
+                        report += `\n⚠️ Partial delivery:\n${partial.map((result) => `${result.fileName}: ${result.deliveryErrors.join('; ')}`).join('\n')}`;
+                    }
                     if (failed.length) report += `\n❌ Failed: ${failed.map((result) => `${result.fileName}: ${result.error}`).join('\n')}`;
                     await sock.sendMessage(from, { text: report }).catch(() => {});
                 }).catch(async (error) => {
@@ -79,7 +138,7 @@ module.exports = {
                 return;
             }
 
-            return await sock.sendMessage(from, { text: '❓ Use `.mw list`, `.mw process 1,2` or `.mw process all`.' }, { quoted: malik_msg });
+            return await sock.sendMessage(from, { text: '❓ Use `.mw menu`, `.mw auto on/off/status`, `.mw list`, or `.mw process all`.' }, { quoted: malik_msg });
         }
 
         // ─────────────────────────────────────────────────────────────────────

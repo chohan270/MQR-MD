@@ -23,7 +23,10 @@ const {
     malik_getEpaperConfig,
     malik_updateEpaperConfig,
     malik_claimEpaperFile,
-    malik_releaseEpaperFileClaim
+    malik_releaseEpaperFileClaim,
+    malik_claimSharedPdf,
+    malik_markSharedPdfSent,
+    malik_releaseSharedPdfClaim
 } = require('./database');
 
 const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
@@ -224,7 +227,14 @@ async function sendFiles(items, dateStr) {
             continue;
         }
 
+        const sharedClaim = await malik_claimSharedPdf(currentSessionId, fileName, `af:${key}`);
+        if (!sharedClaim) {
+            await fs.remove(filePath).catch(() => {});
+            await fs.remove(thumbPath).catch(() => {});
+            continue;
+        }
         if (!(await malik_claimEpaperFile(currentSessionId, dateStr, fileName, key))) {
+            await malik_releaseSharedPdfClaim(currentSessionId, sharedClaim);
             await fs.remove(filePath).catch(() => {});
             await fs.remove(thumbPath).catch(() => {});
             continue;
@@ -285,7 +295,17 @@ async function sendFiles(items, dateStr) {
             // send without having to re-download/re-watermark anything.
             console.error(`[epaper] all sends failed for ${fileName} — keeping file, will retry`);
             await malik_releaseEpaperFileClaim(currentSessionId, dateStr, fileName);
+            await malik_releaseSharedPdfClaim(currentSessionId, sharedClaim);
             continue;
+        }
+        const sharedRecorded = await malik_markSharedPdfSent(
+            currentSessionId,
+            sharedClaim,
+            fileName,
+            `af:${key}`
+        );
+        if (!sharedRecorded) {
+            console.error(`[epaper] shared duplicate record could not be saved for ${fileName}`);
         }
         sentCount++;
         // Delete from Heroku /tmp ONLY (never from WhatsApp) -- frees both

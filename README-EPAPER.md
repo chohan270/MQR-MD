@@ -73,21 +73,35 @@ kar sakta hai — ya `.env`/DB mein defined sudo).
 .af epaper off                           → auto-system OFF
 .af epaper run                           → abhi turant Express + Baqi + retries chalao (manual)
 .af epaper                               → status dekho (ON/OFF, targets, last run, pending retries)
+.mw menu                                 → automatic PDF controls dekho
+.mw auto status                          → .mw auto processing aur duplicate records ka status
+.mw auto on / .mw auto off               → new group PDFs ki automatic processing on/off
+.mw list                                 → recent manual/retry PDF queue dekho
+.mw process all                          → pending PDFs manually process karo
 ```
 
-### Owner-reaction PDF workflow
+### Automatic group PDF workflow
 
-Kisi bhi group mein aane wali PDF generic auto-forward nahi hoti. Bot sirf
-configured owner ke reaction par us PDF ko process karta hai: `mw.py` promo
-pages/bottom watermark cleanup aur PDF merge karta hai, `wm.py` ke two-PNG
-front-page watermark rule ko use karta hai, phir `.af epaper set` wale target
-groups mein processed PDF bhejta hai. Reaction na ho to target groups mein file
-nahi bheji jati.
+Automatic processing default-on hai. Nayi group PDF aate hi bot `mw.py` se usay
+process karke `.af epaper set` wale target groups mein bhejta hai. `.mw auto off`
+automatic sending rok kar nayi PDFs manual queue mein rakhta hai; `.mw auto on`
+usay dobara chalu karta hai.
 
-Multiple reactions ek FIFO queue mein one-by-one process hoti hain. Har PDF ke
-upload attempt ke baad input/output files aur cached source message foran clear
-ho jate hain, taake 10-15 PDFs ek saath react karne par Heroku memory stable
-rahe.
+In do groups mein configured dono sender IDs ki PDFs queue/process nahi hotin:
+`120363026226973835@g.us` aur `923489517717-1546053015@g.us`. Baqi group
+members ki PDFs normal process hoti hain.
+
+`.mw` aur `.af epaper` dono MongoDB ke shared filename record se deduplicate
+hote hain: normalized same filename successful send ke baad 24 ghante tak
+dobara process/send nahi hota. Record atomic claim se banta hai, taake alag
+groups se ek hi waqt aane wali copies bhi double na bheji jayen. `.af epaper
+clearsent` current Pakistan-day ke records (shared records samet) clear karta
+hai.
+
+Automatic/manual PDF work FIFO mein one-by-one process hota hai. Agar
+automatic mode off ho ya processing/send fail ho, pending PDF `.mw list` mein
+manual retry ke liye rehti hai. `.mw process all` queue ki PDFs process karta
+hai; pehle se delivered duplicate skip hoti hai.
 
 Group ka JID nikalne ke liye group mein `.af` bhej dein — ya jo bhi purana
 JID-finder command (`gjids`/`jid`) already bot mein hai, wahi use karein.

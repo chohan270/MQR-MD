@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { randomUUID } = require('crypto');
 
 
 
@@ -122,6 +123,7 @@ const malik_globalAutoForwardSchema = new mongoose.Schema({
 // ---------------------------------------------------------------------------
 const malik_epaperConfigSchema = new mongoose.Schema({
     enabled: { type: Boolean, default: false },
+    mwAutoEnabled: { type: Boolean, default: true },
     targetJids: { type: [String], default: [] },
     primaryJid: { type: String, default: '' },
     lastRun: { type: Date, default: null },
@@ -167,8 +169,20 @@ const malik_pdfQueueSchema = new mongoose.Schema({
     error: { type: String, default: '' },
     processedAt: { type: Date, default: null }
 });
+const malik_sharedPdfSchema = new mongoose.Schema({
+    normalizedName: { type: String, required: true, unique: true },
+    fileName: { type: String, required: true },
+    source: { type: String, required: true },
+    claimId: { type: String, required: true },
+    status: { type: String, enum: ['processing', 'sent'], required: true },
+    claimedAt: { type: Date, required: true },
+    sentAt: { type: Date, default: null },
+    expiresAt: { type: Date, required: true }
+});
+malik_sharedPdfSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 let isConnected = false;
 const pdfQueueIndexMigrations = new Map();
+const sharedPdfIndexMigrations = new Map();
 
 // ---------------------------------------------------------------------------
 // DYNAMIC MODEL HELPER
@@ -198,8 +212,36 @@ function getModel(sessionId, type) {
         case 'EpaperConfig': return mongoose.model(modelName, malik_epaperConfigSchema, collectionName);
         case 'EpaperSentFile': return mongoose.model(modelName, malik_epaperSentFileSchema, collectionName);
         case 'PdfQueue': return mongoose.model(modelName, malik_pdfQueueSchema, collectionName);
+        case 'SharedPdf': return mongoose.model(modelName, malik_sharedPdfSchema, collectionName);
         default: throw new Error(`Unknown model type: ${type}`);
     }
+}
+
+function normalizeSharedPdfName(fileName) {
+    const baseName = String(fileName || '')
+        .split(/[\\/]/)
+        .pop()
+        .replace(/\.pdf$/i, '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/(?:^|[\s._-])m\.?w\.?(?=$|[\s._-])/gi, ' ');
+    return baseName.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+}
+
+async function ensureSharedPdfIndexes(sessionId) {
+    const key = sessionId || 'malik_session';
+    if (!sharedPdfIndexMigrations.has(key)) {
+        const Model = getModel(sessionId, 'SharedPdf');
+        const migration = Promise.all([
+            Model.collection.createIndex({ normalizedName: 1 }, { unique: true }),
+            Model.collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+        ]).catch((error) => {
+            sharedPdfIndexMigrations.delete(key);
+            throw error;
+        });
+        sharedPdfIndexMigrations.set(key, migration);
+    }
+    await sharedPdfIndexMigrations.get(key);
 }
 
 async function ensurePdfQueuePersistence(sessionId) {
@@ -797,11 +839,121 @@ async function malik_clearEpaperSentToday(sessionId, date) {
     try {
         const Model = getModel(sessionId, 'EpaperSentFile');
         const res = await Model.deleteMany({ date });
-        return res.deletedCount || 0;
+        const dayStart = new Date(`${date}T00:00:00+05:00`);
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        const shared = await getModel(sessionId, 'SharedPdf').deleteMany({
+            sentAt: { $gte: dayStart, $lt: dayEnd }
+        });
+        return (res.deletedCount || 0) + (shared.deletedCount || 0);
     } catch (e) {
         console.error('DB Error clearEpaperSentToday:', e);
         return 0;
     }
+}
+
+async function malik_claimSharedPdf(sessionId, fileName, source) {
+    if (!isConnected) throw new Error('MongoDB is not connected; shared PDF deduplication cannot be guaranteed');
+
+    const normalizedName = normalizeSharedPdfName(fileName);
+    if (!normalizedName) throw new Error('Cannot deduplicate a PDF without a valid filename');
+    await ensureSharedPdfIndexes(sessionId);
+
+    const Model = getModel(sessionId, 'SharedPdf');
+    const now = new Date();
+    const claimId = randomUUID();
+    const leaseMs = 15 * 60 * 1000;
+    const claim = {
+        normalizedName,
+        fileName,
+        source,
+        claimId,
+        status: 'processing',
+        claimedAt: now,
+        sentAt: null,
+        expiresAt: new Date(now.getTime() + leaseMs)
+    };
+
+    try {
+        await Model.create(claim);
+    } catch (error) {
+        if (error.code !== 11000) throw error;
+        const reclaimed = await Model.findOneAndUpdate(
+            { normalizedName, expiresAt: { $lte: now } },
+            { $set: claim },
+            { returnDocument: 'after' }
+        ).lean();
+        if (!reclaimed) return null;
+    }
+
+    try {
+        const legacyRecords = await getModel(sessionId, 'EpaperSentFile')
+            .find({ sentAt: { $gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } })
+            .select('fileName sentAt')
+            .lean();
+        const legacyMatch = legacyRecords.find(
+            (record) => normalizeSharedPdfName(record.fileName) === normalizedName
+        );
+        if (legacyMatch) {
+            const expiresAt = new Date(new Date(legacyMatch.sentAt).getTime() + 24 * 60 * 60 * 1000);
+            if (expiresAt > now) {
+                await Model.updateOne(
+                    { normalizedName, claimId },
+                    {
+                        $set: {
+                            fileName: legacyMatch.fileName,
+                            source: 'legacy-epaper',
+                            status: 'sent',
+                            sentAt: legacyMatch.sentAt,
+                            expiresAt
+                        }
+                    }
+                );
+                return null;
+            }
+        }
+    } catch (error) {
+        await Model.deleteOne({ normalizedName, claimId, status: 'processing' }).catch(() => {});
+        throw error;
+    }
+
+    return { normalizedName, claimId };
+}
+
+async function malik_markSharedPdfSent(sessionId, claim, fileName, source) {
+    if (!isConnected) throw new Error('MongoDB is not connected while saving shared PDF status');
+    const now = new Date();
+    const result = await getModel(sessionId, 'SharedPdf').updateOne(
+        { normalizedName: claim.normalizedName, claimId: claim.claimId, status: 'processing' },
+        {
+            $set: {
+                fileName,
+                source,
+                status: 'sent',
+                sentAt: now,
+                expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
+            }
+        }
+    );
+    return result.modifiedCount === 1;
+}
+
+async function malik_releaseSharedPdfClaim(sessionId, claim) {
+    if (!isConnected || !claim) return false;
+    const result = await getModel(sessionId, 'SharedPdf').deleteOne({
+        normalizedName: claim.normalizedName,
+        claimId: claim.claimId,
+        status: 'processing'
+    });
+    return result.deletedCount === 1;
+}
+
+async function malik_countSharedPdfRecords(sessionId) {
+    if (!isConnected) throw new Error('MongoDB is not connected');
+    await ensureSharedPdfIndexes(sessionId);
+    return getModel(sessionId, 'SharedPdf').countDocuments({
+        status: 'sent',
+        expiresAt: { $gt: new Date() }
+    });
 }
 
 async function malik_addPdfQueueItem(sessionId, item) {
@@ -938,6 +1090,11 @@ module.exports = {
     malik_releaseEpaperFileClaim,
     malik_markEpaperFileSent,
     malik_clearEpaperSentToday,
+    malik_claimSharedPdf,
+    malik_markSharedPdfSent,
+    malik_releaseSharedPdfClaim,
+    malik_countSharedPdfRecords,
+    normalizeSharedPdfName,
     malik_addPdfQueueItem,
     malik_listPdfQueue,
     malik_claimPdfQueueItem,
