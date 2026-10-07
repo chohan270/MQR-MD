@@ -490,6 +490,10 @@ async function startSession(sessionId) {
                         console.error(`[PDF-QUEUE] automatic processing failed for ${malik_msg.key.id}: ${result.error}`);
                     } else if (result?.status === 'duplicate') {
                         console.log(`[PDF-QUEUE] skipped 24-hour duplicate: ${result.fileName}`);
+                    } else if (result?.status === 'reference-image-skipped') {
+                        console.log(`[PDF-QUEUE] skipped reference ad image: ${result.fileName}`);
+                    } else if (result?.status === 'source-is-only-target') {
+                        console.log(`[PDF-QUEUE] skipped sending ${result.fileName} back to its source group`);
                     }
                 })
                 .catch((error) => {

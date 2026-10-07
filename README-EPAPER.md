@@ -93,15 +93,24 @@ members ki PDFs normal process hoti hain.
 
 `.mw` aur `.af epaper` dono MongoDB ke shared filename record se deduplicate
 hote hain: normalized same filename successful send ke baad 24 ghante tak
-dobara process/send nahi hota. Record atomic claim se banta hai, taake alag
-groups se ek hi waqt aane wali copies bhi double na bheji jayen. `.af epaper
+dobara process/send nahi hota. `.af epaper` ke newspaper keys bhi record hote
+hain; is liye Jang, Express, Ummat, Jinnah, Pakistan Observer aur configured
+newspapers ke matching naam wali `.mw` copy bhi 24 ghante ke andar skip hoti
+hai, chahe dono filenames bilkul ek jaise na hon. Record atomic claim se banta
+hai, taake same filename ki alag groups se aane wali copies double na bheji
+jayen. `.af epaper
 clearsent` current Pakistan-day ke records (shared records samet) clear karta
 hai.
 
 Automatic/manual PDF work FIFO mein one-by-one process hota hai. Agar
 automatic mode off ho ya processing/send fail ho, pending PDF `.mw list` mein
 manual retry ke liye rehti hai. `.mw process all` queue ki PDFs process karta
-hai; pehle se delivered duplicate skip hoti hai.
+hai; pehle se delivered duplicate skip hoti hai. User ke diye hue PBK/ad
+reference images se match karne wali PDF automatic `.mw` processing mein
+poori skip hoti hai; manual `.mw process` ab bhi available rehta hai. Agar
+source group bhi `.af epaper` target list mein ho to PDF usi group mein wapas
+nahi bheji jati. Date-first filename, misal `7 Oct 92 News Lahore.pdf`, output
+se pehle `92 News Lahore 7Oct.pdf` ban jata hai.
 
 Group ka JID nikalne ke liye group mein `.af` bhej dein — ya jo bhi purana
 JID-finder command (`gjids`/`jid`) already bot mein hai, wahi use karein.

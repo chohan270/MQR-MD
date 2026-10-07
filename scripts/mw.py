@@ -6,11 +6,13 @@ selection logic for the front page.
 """
 import argparse
 import io
+import json
 import os
 import re
 from pathlib import Path
 
 import pypdfium2 as pdfium
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import RectangleObject
 from reportlab.pdfgen import canvas
@@ -24,6 +26,12 @@ PROMO_KEYWORDS = [
 ]
 BOTTOM_WATERMARK_TEXT = "Social Media Pakistan 0342-4938217"
 WATERMARK_PATCH_PADDING = 2
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+_SKIP_HASHES_PATH = _ASSETS_DIR / "mw_auto_skip_image_hashes.json"
+_SKIP_HASH_DATA = json.loads(_SKIP_HASHES_PATH.read_text(encoding="utf-8"))
+AUTO_SKIP_PAGE_HASHES = tuple(_SKIP_HASH_DATA["pageHashes"])
+AUTO_SKIP_IMAGE_HASHES = tuple(_SKIP_HASH_DATA["imageHashes"])
+REFERENCE_HASH_MAX_DISTANCE = 4
 
 
 def clean_filename(filename):
@@ -43,7 +51,74 @@ def clean_filename(filename):
             name = f"{rest.strip()} {day}{month}"
     name = re.sub(r"\s+", " ", name).strip()
     name = re.sub(r"^[\s._-]+|[\s._-]+$", "", name)
+    date_first = re.match(rf"^(\d{{1,2}})\s+({months})\s+(.+)$", name, re.I)
+    if date_first:
+        day, month, rest = date_first.groups()
+        name = f"{rest.strip()} {day}{month}"
     return name + ext.lower()
+
+
+def image_difference_hash(image):
+    rgba = image.convert("RGBA")
+    alpha = rgba.getchannel("A")
+    if alpha.getextrema()[0] < 255:
+        bounds = alpha.getbbox()
+        if bounds:
+            rgba = rgba.crop(bounds)
+        background = Image.new("RGBA", rgba.size, "white")
+        background.alpha_composite(rgba)
+        image = background.convert("RGB")
+    else:
+        image = rgba.convert("RGB")
+
+    grayscale = image.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+    pixels = list(grayscale.getdata())
+    fingerprint = 0
+    for y in range(8):
+        for x in range(8):
+            fingerprint = (fingerprint << 1) | (pixels[y * 9 + x] > pixels[y * 9 + x + 1])
+    return f"{fingerprint:016x}"
+
+
+def _matches_reference_hash(fingerprint, references):
+    value = int(fingerprint, 16)
+    return any(
+        (value ^ int(reference, 16)).bit_count() <= REFERENCE_HASH_MAX_DISTANCE
+        for reference in references
+    )
+
+
+def _render_page_for_image_match(page):
+    buffer = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_page(page)
+    writer.write(buffer)
+    document = pdfium.PdfDocument(buffer.getvalue())
+    try:
+        return document[0].render(scale=0.35).to_pil().convert("RGB")
+    finally:
+        document.close()
+
+
+def has_reference_ad_image(page):
+    page_images = page.images
+    for page_image in page_images:
+        fingerprint = image_difference_hash(page_image.image)
+        if (
+            _matches_reference_hash(fingerprint, AUTO_SKIP_PAGE_HASHES)
+            or _matches_reference_hash(fingerprint, AUTO_SKIP_IMAGE_HASHES)
+        ):
+            return True
+
+    if not page_images:
+        fingerprint = image_difference_hash(_render_page_for_image_match(page))
+        return _matches_reference_hash(fingerprint, AUTO_SKIP_PAGE_HASHES)
+    return False
+
+
+def contains_reference_ad(pdf_path):
+    reader = PdfReader(pdf_path)
+    return any(has_reference_ad_image(page) for page in reader.pages)
 
 
 def is_promo_page(page):
@@ -181,7 +256,11 @@ def save_front_page_thumbnail(image, output_path):
     return thumb_path
 
 
-def process_pdf(pdf_path, output_path):
+def process_pdf(pdf_path, output_path, skip_reference_images=False):
+    if skip_reference_images and contains_reference_ad(pdf_path):
+        print(f"Reference ad image found; automatic MW processing skipped: {pdf_path}")
+        return None
+
     reader = PdfReader(pdf_path)
     pages = list(reader.pages)
     if not pages:
@@ -211,8 +290,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--skip-reference-images", action="store_true")
     args = parser.parse_args()
-    process_pdf(args.input, args.output)
+    result = process_pdf(args.input, args.output, skip_reference_images=args.skip_reference_images)
+    if result is None:
+        print(f"MW_SKIPPED_REFERENCE_IMAGE:{args.input}", flush=True)
+        return
     print(f"MW_RESULT:{args.output}", flush=True)
 
 

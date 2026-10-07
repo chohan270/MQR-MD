@@ -126,6 +126,10 @@ module.exports = {
                     let report = `✅ Complete\n📤 Sent: ${sent}`;
                     const duplicates = results.filter((result) => result.status === 'duplicate').length;
                     if (duplicates) report += `\n⏭️ Duplicate PDFs skipped: ${duplicates}`;
+                    const referenceSkips = results.filter((result) => result.status === 'reference-image-skipped').length;
+                    if (referenceSkips) report += `\n⏭️ Reference-image PDFs skipped automatically: ${referenceSkips}`;
+                    const sourceSkips = results.filter((result) => result.status === 'source-is-only-target').length;
+                    if (sourceSkips) report += `\n⏭️ Source group was the only target: ${sourceSkips}`;
                     const partial = results.filter((result) => result.status === 'sent' && result.deliveryErrors?.length);
                     if (partial.length) {
                         report += `\n⚠️ Partial delivery:\n${partial.map((result) => `${result.fileName}: ${result.deliveryErrors.join('; ')}`).join('\n')}`;

@@ -173,6 +173,7 @@ const malik_sharedPdfSchema = new mongoose.Schema({
     normalizedName: { type: String, required: true, unique: true },
     fileName: { type: String, required: true },
     source: { type: String, required: true },
+    paperKey: { type: String, default: '' },
     claimId: { type: String, required: true },
     status: { type: String, enum: ['processing', 'sent'], required: true },
     claimedAt: { type: Date, required: true },
@@ -226,6 +227,44 @@ function normalizeSharedPdfName(fileName) {
         .toLowerCase()
         .replace(/(?:^|[\s._-])m\.?w\.?(?=$|[\s._-])/gi, ' ');
     return baseName.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+}
+
+const PAPER_KEY_ALIASES = {
+    pakobserver: ['pak observer', 'pakistan observer'],
+    jangsundaymagazine: ['jang sunday magazine', 'jang'],
+    thenews: ['the news'],
+    nawaiwaqt: ['nawai waqt'],
+    dailypakistan: ['daily pakistan'],
+    dailypakistanlate: ['daily pakistan'],
+    naibaat: ['nai baat'],
+    naibaatmagazine: ['nai baat magazine'],
+    countrynews: ['country news'],
+    parliamenttimes: ['parliament times'],
+    jehanpakistan: ['jehan pakistan'],
+    islamk: ['islam karachi'],
+    mashriqakhbar: ['mashriq akhbar'],
+    pakistantoday: ['pakistan today'],
+    dailyausaf: ['daily ausaf'],
+    dailyk2: ['daily k2'],
+    thepatriot: ['the patriot', 'patriot'],
+    leadpakistan: ['lead pakistan'],
+    thenation: ['the nation']
+};
+
+function sharedPdfMatchesPaperKeyword(fileName, paperKey) {
+    const normalizedName = normalizeSharedPdfName(fileName);
+    const key = normalizeSharedPdfName(paperKey);
+    if (!normalizedName || !key) return false;
+
+    const aliases = [key, ...(PAPER_KEY_ALIASES[key.replace(/\s/g, '')] || [])];
+    return aliases.some((aliasValue) => {
+        const alias = normalizeSharedPdfName(aliasValue);
+        const aliasTokens = alias.split(' ');
+        if (aliasTokens.length > 1) {
+            return normalizedName.includes(alias);
+        }
+        return normalizedName.split(' ').includes(alias);
+    });
 }
 
 async function ensureSharedPdfIndexes(sessionId) {
@@ -851,7 +890,7 @@ async function malik_clearEpaperSentToday(sessionId, date) {
     }
 }
 
-async function malik_claimSharedPdf(sessionId, fileName, source) {
+async function malik_claimSharedPdf(sessionId, fileName, source, paperKey = '') {
     if (!isConnected) throw new Error('MongoDB is not connected; shared PDF deduplication cannot be guaranteed');
 
     const normalizedName = normalizeSharedPdfName(fileName);
@@ -860,12 +899,45 @@ async function malik_claimSharedPdf(sessionId, fileName, source) {
 
     const Model = getModel(sessionId, 'SharedPdf');
     const now = new Date();
+    const legacyRecords = await getModel(sessionId, 'EpaperSentFile')
+        .find({ sentAt: { $gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } })
+        .select('fileName key sentAt')
+        .lean();
+    const candidateKey = paperKey || (source.startsWith('af:') ? source.slice(3) : '');
+
+    if (source === 'mw') {
+        const recentAfRecords = await Model.find({
+            status: 'sent',
+            expiresAt: { $gt: now },
+            source: /^af:/
+        }).select('fileName source paperKey').lean();
+        const matchingAf = recentAfRecords.find((record) => {
+            const recordedKey = record.paperKey || record.source.slice(3);
+            return sharedPdfMatchesPaperKeyword(fileName, recordedKey);
+        });
+        const matchingLegacy = legacyRecords.find((record) => (
+            normalizeSharedPdfName(record.fileName) === normalizedName
+            || sharedPdfMatchesPaperKeyword(fileName, record.key)
+        ));
+        if (matchingAf || matchingLegacy) return null;
+    } else if (source.startsWith('af:') && candidateKey) {
+        const recentMwRecords = await Model.find({
+            status: 'sent',
+            expiresAt: { $gt: now },
+            source: 'mw'
+        }).select('fileName').lean();
+        if (recentMwRecords.some((record) => (
+            sharedPdfMatchesPaperKeyword(record.fileName, candidateKey)
+        ))) return null;
+    }
+
     const claimId = randomUUID();
     const leaseMs = 15 * 60 * 1000;
     const claim = {
         normalizedName,
         fileName,
         source,
+        paperKey: candidateKey,
         claimId,
         status: 'processing',
         claimedAt: now,
@@ -886,10 +958,6 @@ async function malik_claimSharedPdf(sessionId, fileName, source) {
     }
 
     try {
-        const legacyRecords = await getModel(sessionId, 'EpaperSentFile')
-            .find({ sentAt: { $gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } })
-            .select('fileName sentAt')
-            .lean();
         const legacyMatch = legacyRecords.find(
             (record) => normalizeSharedPdfName(record.fileName) === normalizedName
         );
@@ -919,7 +987,7 @@ async function malik_claimSharedPdf(sessionId, fileName, source) {
     return { normalizedName, claimId };
 }
 
-async function malik_markSharedPdfSent(sessionId, claim, fileName, source) {
+async function malik_markSharedPdfSent(sessionId, claim, fileName, source, paperKey = '') {
     if (!isConnected) throw new Error('MongoDB is not connected while saving shared PDF status');
     const now = new Date();
     const result = await getModel(sessionId, 'SharedPdf').updateOne(
@@ -928,6 +996,7 @@ async function malik_markSharedPdfSent(sessionId, claim, fileName, source) {
             $set: {
                 fileName,
                 source,
+                paperKey,
                 status: 'sent',
                 sentAt: now,
                 expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
@@ -1095,6 +1164,7 @@ module.exports = {
     malik_releaseSharedPdfClaim,
     malik_countSharedPdfRecords,
     normalizeSharedPdfName,
+    sharedPdfMatchesPaperKeyword,
     malik_addPdfQueueItem,
     malik_listPdfQueue,
     malik_claimPdfQueueItem,

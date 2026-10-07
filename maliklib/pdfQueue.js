@@ -53,7 +53,17 @@ function sanitizePdfFileName(fileName) {
         .replace(/[\s._-]+/g, ' ')
         .replace(/^\s+|\s+$/g, '')
         .replace(/^[._-]+|[._-]+$/g, '');
-    return `${cleaned || 'document'}${extension}`;
+    const months = 'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December';
+    const dateFirst = cleaned.match(new RegExp(`^(\\d{1,2})\\s+(${months})\\s+(.+)$`, 'i'));
+    const normalized = dateFirst
+        ? `${dateFirst[3].trim()} ${dateFirst[1]}${dateFirst[2]}`
+        : cleaned;
+    return `${normalized || 'document'}${extension}`;
+}
+
+function filterTargetGroups(targets, sourceJid) {
+    const source = normalizeJid(sourceJid);
+    return targets.filter((targetJid) => normalizeJid(targetJid) !== source);
 }
 
 function unwrapMessage(message) {
@@ -126,19 +136,32 @@ async function resolveMessage(sock, item) {
     return null;
 }
 
-function runMw(inputPath, outputPath) {
+function runMw(inputPath, outputPath, skipReferenceImages) {
     return new Promise((resolve, reject) => {
         const python = process.env.PYTHON_BIN || 'python3';
         const script = path.join(__dirname, '..', 'scripts', 'mw.py');
-        const child = spawn(python, [script, '--input', inputPath, '--output', outputPath], { cwd: path.dirname(script) });
+        const args = [script, '--input', inputPath, '--output', outputPath];
+        if (skipReferenceImages) args.push('--skip-reference-images');
+        const child = spawn(python, args, { cwd: path.dirname(script) });
+        let stdout = '';
         let stderr = '';
+        child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
         child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
         child.on('error', reject);
-        child.on('close', (code) => code === 0 ? resolve() : reject(new Error(stderr || `mw.py exited with ${code}`)));
+        child.on('close', (code) => {
+            if (code !== 0) return reject(new Error(stderr || `mw.py exited with ${code}`));
+            resolve({ skipped: stdout.includes('MW_SKIPPED_REFERENCE_IMAGE:') });
+        });
     });
 }
 
-async function processOne(sock, sessionId, item, targets) {
+async function processOne(sock, sessionId, item, targets, automatic = false) {
+    const deliveryTargets = filterTargetGroups(targets, item.remoteJid);
+    if (!deliveryTargets.length) {
+        await malik_deletePdfQueueItem(sessionId, item._id);
+        return { status: 'source-is-only-target', fileName: item.fileName };
+    }
+
     const claimed = await malik_claimPdfQueueItem(sessionId, item._id);
     if (!claimed) return { status: 'skipped' };
 
@@ -162,7 +185,14 @@ async function processOne(sock, sessionId, item, targets) {
         const buffer = await downloadMediaMessage(source, 'buffer', {}, { logger: console });
         await fs.promises.mkdir(workDir, { recursive: true });
         await fs.promises.writeFile(inputPath, buffer);
-        await runMw(inputPath, outputPath);
+        const processing = await runMw(inputPath, outputPath, automatic);
+        if (processing.skipped) {
+            const released = await malik_releaseSharedPdfClaim(sessionId, sharedClaim);
+            if (!released) throw new Error('Could not release the duplicate claim after skipping a reference image');
+            const removed = await malik_deletePdfQueueItem(sessionId, claimed._id);
+            if (!removed) throw new Error('Could not remove the skipped reference-image PDF from the queue');
+            return { status: 'reference-image-skipped', fileName: claimed.fileName };
+        }
         let jpegThumbnail;
         try {
             jpegThumbnail = await fs.promises.readFile(thumbPath);
@@ -170,7 +200,7 @@ async function processOne(sock, sessionId, item, targets) {
             jpegThumbnail = undefined;
         }
         const deliveryErrors = [];
-        for (const targetJid of targets) {
+        for (const targetJid of deliveryTargets) {
             try {
                 await sock.sendMessage(targetJid, {
                     document: { url: outputPath },
@@ -223,7 +253,7 @@ async function processIncomingPdf(sock, sessionId, message) {
         return { status: 'failed', fileName: item.fileName, error };
     }
 
-    const run = processingTail.then(() => processOne(sock, sessionId, item, targets));
+    const run = processingTail.then(() => processOne(sock, sessionId, item, targets, true));
     processingTail = run.catch(() => {});
     return run;
 }
@@ -256,4 +286,12 @@ function cleanupMemory() {
 }
 setInterval(cleanupMemory, 10 * 60 * 1000).unref();
 
-module.exports = { rememberAndQueue, processIncomingPdf, listItems, processItems, isExcludedPdfSource };
+module.exports = {
+    rememberAndQueue,
+    processIncomingPdf,
+    listItems,
+    processItems,
+    isExcludedPdfSource,
+    filterTargetGroups,
+    sanitizePdfFileName
+};

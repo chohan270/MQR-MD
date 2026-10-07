@@ -19,6 +19,30 @@ import wm  # noqa: E402
 
 
 class EpaperRulesTest(unittest.TestCase):
+    def test_mw_auto_skips_pages_with_reference_image_fingerprint(self):
+        import mw
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, 'reference.pdf')
+            output_path = os.path.join(tmpdir, 'must-not-exist.pdf')
+            reference_image = Image.new('RGB', (320, 100), 'white')
+            for x in range(320):
+                reference_image.putpixel((x, 25), (x % 256, (x * 3) % 256, (x * 7) % 256))
+            reference_image.save(input_path, format='PDF')
+
+            page = PdfReader(input_path).pages[0]
+            fingerprint = mw.image_difference_hash(page.images[0].image)
+            with patch.object(mw, 'AUTO_SKIP_IMAGE_HASHES', (fingerprint,)):
+                self.assertTrue(mw.has_reference_ad_image(page))
+                self.assertIsNone(mw.process_pdf(input_path, output_path, skip_reference_images=True))
+                self.assertIsNotNone(mw.process_pdf(input_path, output_path, skip_reference_images=False))
+
+            self.assertTrue(os.path.exists(output_path))
+
+    def test_mw_clean_filename_moves_day_first_date_to_end(self):
+        import mw
+
+        self.assertEqual(mw.clean_filename('7 Oct 92 News Lahore.pdf'), '92 News Lahore 7Oct.pdf')
     def test_mw_removes_brand_strip_text_at_different_positions_and_colors(self):
         import mw
 

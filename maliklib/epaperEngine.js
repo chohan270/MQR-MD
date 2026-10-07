@@ -227,7 +227,7 @@ async function sendFiles(items, dateStr) {
             continue;
         }
 
-        const sharedClaim = await malik_claimSharedPdf(currentSessionId, fileName, `af:${key}`);
+        const sharedClaim = await malik_claimSharedPdf(currentSessionId, fileName, `af:${key}`, key);
         if (!sharedClaim) {
             await fs.remove(filePath).catch(() => {});
             await fs.remove(thumbPath).catch(() => {});
@@ -302,7 +302,8 @@ async function sendFiles(items, dateStr) {
             currentSessionId,
             sharedClaim,
             fileName,
-            `af:${key}`
+            `af:${key}`,
+            key
         );
         if (!sharedRecorded) {
             console.error(`[epaper] shared duplicate record could not be saved for ${fileName}`);

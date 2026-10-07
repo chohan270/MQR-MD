@@ -2,13 +2,37 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeSharedPdfName } = require('../maliklib/database');
-const { isExcludedPdfSource } = require('../maliklib/pdfQueue');
+const { normalizeSharedPdfName, sharedPdfMatchesPaperKeyword } = require('../maliklib/database');
+const { filterTargetGroups, isExcludedPdfSource, sanitizePdfFileName } = require('../maliklib/pdfQueue');
 
 test('normalizes MW and filename punctuation for shared duplicate matching', () => {
     assert.equal(
         normalizeSharedPdfName('The Express MW - Lahore 6 Oct.PDF'),
         normalizeSharedPdfName('the_express---lahore 6 OCT.pdf')
+    );
+});
+
+test('matches MW titles against newspaper keys recorded by the epaper sender', () => {
+    assert.equal(sharedPdfMatchesPaperKeyword('Jang Sunday Magazine Lahore 7Oct.pdf', 'jang'), true);
+    assert.equal(sharedPdfMatchesPaperKeyword('Express Lahore 7Oct.pdf', 'express'), true);
+    assert.equal(sharedPdfMatchesPaperKeyword('Ummat Karachi 7Oct.pdf', 'ummat'), true);
+    assert.equal(sharedPdfMatchesPaperKeyword('Jinnah Lahore 7Oct.pdf', 'jinnah'), true);
+    assert.equal(sharedPdfMatchesPaperKeyword('Pakistan Observer 7Oct.pdf', 'pakobserver'), true);
+    assert.equal(sharedPdfMatchesPaperKeyword('Daily Pakistan Lahore 7Oct.pdf', 'dailypakistan'), true);
+    assert.equal(sharedPdfMatchesPaperKeyword('The Patriot ISB 7Oct.pdf', 'thepatriot'), true);
+    assert.equal(sharedPdfMatchesPaperKeyword('Mashriq Akhbar 7Oct.pdf', 'mashriqakhbar'), true);
+    assert.equal(sharedPdfMatchesPaperKeyword('Dawn Karachi 7Oct.pdf', 'jang'), false);
+    assert.equal(sharedPdfMatchesPaperKeyword('Expressway Lahore 7Oct.pdf', 'express'), false);
+});
+
+test('moves a leading day/month/year into the newspaper filename suffix', () => {
+    assert.equal(sanitizePdfFileName('7 Oct 92 News Lahore.pdf'), '92 News Lahore 7Oct.pdf');
+});
+
+test('does not deliver an MW PDF back to its source group', () => {
+    assert.deepEqual(
+        filterTargetGroups(['120363@g.us', '12345@g.us'], '120363@g.us'),
+        ['12345@g.us']
     );
 });
 
