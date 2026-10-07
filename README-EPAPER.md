@@ -106,8 +106,12 @@ Automatic/manual PDF work FIFO mein one-by-one process hota hai. Agar
 automatic mode off ho ya processing/send fail ho, pending PDF `.mw list` mein
 manual retry ke liye rehti hai. `.mw process all` queue ki PDFs process karta
 hai; pehle se delivered duplicate skip hoti hai. User ke diye hue PBK/ad
-reference images se match karne wali PDF automatic aur manual dono `.mw`
-processing paths mein poori skip hoti hai. Agar
+PDF (50-page ad PDF) ya do full-skip reference images (in mein PBK News logo
+bhi shamil hai) front page par milen to automatic aur manual dono `.mw` paths
+mein poori PDF skip hoti hai. ZIP ki baqi paanch reference photos agar front
+page par milen to sirf matching area white cover hota hai; PDF baqi `.mw`
+processing se guzarti aur targets par send hoti hai. Ye cover rule automatic
+aur manual dono par apply hota hai. Agar
 source group bhi `.af epaper` target list mein ho to PDF usi group mein wapas
 nahi bheji jati. Date-first filename, misal `7 Oct 92 News Lahore.pdf`, output
 se pehle `92 News Lahore 7Oct.pdf` ban jata hai.

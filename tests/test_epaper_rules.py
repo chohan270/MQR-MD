@@ -19,7 +19,7 @@ import wm  # noqa: E402
 
 
 class EpaperRulesTest(unittest.TestCase):
-    def test_mw_auto_skips_pages_with_reference_image_fingerprint(self):
+    def test_mw_skips_pages_with_full_skip_reference_image_fingerprint(self):
         import mw
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -32,12 +32,160 @@ class EpaperRulesTest(unittest.TestCase):
 
             page = PdfReader(input_path).pages[0]
             fingerprint = mw.image_difference_hash(page.images[0].image)
-            with patch.object(mw, 'AUTO_SKIP_IMAGE_HASHES', (fingerprint,)):
+            with patch.object(mw, 'REFERENCE_SKIP_IMAGE_HASHES', (fingerprint,)):
                 self.assertTrue(mw.has_reference_ad_image(page))
                 self.assertIsNone(mw.process_pdf(input_path, output_path, skip_reference_images=True))
-                self.assertIsNotNone(mw.process_pdf(input_path, output_path, skip_reference_images=False))
+                with patch.object(mw, 'find_front_page_cover_boxes', return_value=([], (0, 0))):
+                    self.assertIsNotNone(
+                        mw.process_pdf(input_path, output_path, skip_reference_images=False)
+                    )
 
             self.assertTrue(os.path.exists(output_path))
+
+    def test_mw_covers_a_matched_front_page_reference_photo_and_keeps_processing(self):
+        import mw
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfgen import canvas
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, 'cover-reference.pdf')
+            output_path = os.path.join(tmpdir, 'processed.pdf')
+            template_path = str(mw._COVER_TEMPLATE_DIR / 'reference-01.jpg')
+            image_width = 300
+            with Image.open(template_path) as template:
+                image_height = image_width * template.height / template.width
+
+            source = io.BytesIO()
+            pdf = canvas.Canvas(source, pagesize=(600, 800))
+            pdf.setFont('Helvetica-Bold', 20)
+            pdf.drawString(30, 760, 'NEWSPAPER FRONT PAGE')
+            pdf.drawImage(
+                ImageReader(template_path),
+                150,
+                250,
+                width=image_width,
+                height=image_height,
+            )
+            pdf.save()
+            source.seek(0)
+            with open(input_path, 'wb') as input_file:
+                input_file.write(source.getvalue())
+
+            page = PdfReader(input_path).pages[0]
+            boxes, rendered_size = mw.find_front_page_cover_boxes(page)
+            self.assertEqual(len(boxes), 1)
+            left, top, right, bottom = boxes[0]
+            self.assertGreater(right - left, 0)
+            self.assertGreater(bottom - top, 0)
+
+            with patch.object(mw.wm, 'build_watermarked_front_page_for_page', return_value=(None, None)):
+                result = mw.process_pdf(input_path, output_path, skip_reference_images=True)
+            self.assertEqual(result, output_path)
+
+            document = pdfium.PdfDocument(output_path)
+            try:
+                pixmap = document[0].render(scale=1.5)
+                image = pixmap.to_pil().convert('RGB')
+                center_x = round((left + right) / 2 * image.width / rendered_size[0])
+                center_y = round((top + bottom) / 2 * image.height / rendered_size[1])
+                self.assertGreaterEqual(min(image.getpixel((center_x, center_y))), 245)
+                self.assertTrue(os.path.exists(output_path))
+            finally:
+                document.close()
+
+    def test_all_five_reference_photos_are_cover_images_not_full_pdf_skip_images(self):
+        import mw
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfgen import canvas
+
+        for index, template_path in enumerate(sorted(mw._COVER_TEMPLATE_DIR.glob('reference-*.jpg'))):
+            with self.subTest(reference=template_path.name):
+                source = io.BytesIO()
+                pdf = canvas.Canvas(source, pagesize=(600, 800))
+                pdf.drawImage(ImageReader(str(template_path)), 50, 100, width=120, height=100)
+                pdf.save()
+                source.seek(0)
+                page = PdfReader(source).pages[0]
+                fingerprint = mw.image_difference_hash(page.images[0].image)
+
+                self.assertTrue(mw._matches_reference_hash(
+                    fingerprint,
+                    (mw.FRONT_PAGE_COVER_IMAGE_HASHES[index],),
+                ))
+                self.assertFalse(mw.has_reference_ad_image(page))
+                box = mw._find_embedded_cover_boxes(page)[0]
+                for actual, expected in zip(box, (50, 100, 170, 200)):
+                    self.assertAlmostEqual(actual, expected, delta=1)
+
+    def test_mw_locates_a_reference_photo_inside_a_flattened_page_scan(self):
+        import mw
+
+        template = mw._COVER_TEMPLATES[0]
+        page_image = Image.new('RGB', (300, 400), 'white')
+        page_image.paste(template.resize((120, 83)), (50, 70))
+
+        box = mw._candidate_cover_matches(page_image, template)
+
+        self.assertIsNotNone(box)
+        left, top, right, bottom = box
+        self.assertAlmostEqual(left, 50, delta=10)
+        self.assertAlmostEqual(top, 70, delta=10)
+        self.assertAlmostEqual(right, 170, delta=10)
+        self.assertAlmostEqual(bottom, 153, delta=10)
+
+    def test_mw_skips_a_flattened_front_page_containing_the_pbk_news_logo(self):
+        import mw
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfgen import canvas
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, 'pbk-logo-front-page.pdf')
+            output_path = os.path.join(tmpdir, 'must-skip.pdf')
+            scan = Image.new('RGB', (300, 400), 'white')
+            logo = mw._SKIP_REFERENCE_TEMPLATES[1].resize((180, 34))
+            scan.paste(logo, (60, 50))
+            scan_buffer = io.BytesIO()
+            scan.save(scan_buffer, format='PNG')
+            scan_buffer.seek(0)
+
+            source = io.BytesIO()
+            pdf = canvas.Canvas(source, pagesize=(600, 800))
+            pdf.drawImage(ImageReader(scan_buffer), 0, 0, width=600, height=800)
+            pdf.save()
+            source.seek(0)
+            with open(input_path, 'wb') as input_file:
+                input_file.write(source.getvalue())
+
+            self.assertTrue(mw.contains_reference_ad(input_path))
+            self.assertIsNone(mw.process_pdf(input_path, output_path, skip_reference_images=True))
+            self.assertFalse(os.path.exists(output_path))
+
+    def test_mw_skips_a_flattened_front_page_containing_the_addtext_reference(self):
+        import mw
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfgen import canvas
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, 'addtext-front-page.pdf')
+            output_path = os.path.join(tmpdir, 'must-skip.pdf')
+            scan = Image.new('RGB', (300, 400), 'white')
+            reference = mw._SKIP_REFERENCE_TEMPLATES[0].resize((200, 26))
+            scan.paste(reference, (50, 60))
+            scan_buffer = io.BytesIO()
+            scan.save(scan_buffer, format='PNG')
+            scan_buffer.seek(0)
+
+            source = io.BytesIO()
+            pdf = canvas.Canvas(source, pagesize=(600, 800))
+            pdf.drawImage(ImageReader(scan_buffer), 0, 0, width=600, height=800)
+            pdf.save()
+            source.seek(0)
+            with open(input_path, 'wb') as input_file:
+                input_file.write(source.getvalue())
+
+            self.assertTrue(mw.contains_reference_ad(input_path))
+            self.assertIsNone(mw.process_pdf(input_path, output_path, skip_reference_images=True))
+            self.assertFalse(os.path.exists(output_path))
 
     def test_mw_clean_filename_moves_day_first_date_to_end(self):
         import mw
