@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { normalizeSharedPdfName, sharedPdfMatchesPaperKeyword } = require('../maliklib/database');
-const { filterTargetGroups, isExcludedPdfSource, sanitizePdfFileName } = require('../maliklib/pdfQueue');
+const { buildMwArgs, filterTargetGroups, isExcludedPdfSource, sanitizePdfFileName } = require('../maliklib/pdfQueue');
 
 test('normalizes MW and filename punctuation for shared duplicate matching', () => {
     assert.equal(
@@ -27,6 +27,13 @@ test('matches MW titles against newspaper keys recorded by the epaper sender', (
 
 test('moves a leading day/month/year into the newspaper filename suffix', () => {
     assert.equal(sanitizePdfFileName('7 Oct 92 News Lahore.pdf'), '92 News Lahore 7Oct.pdf');
+});
+
+test('enables reference-image skipping in both automatic and manual MW queue runs', () => {
+    assert.deepEqual(
+        buildMwArgs('/tmp/input.pdf', '/tmp/output.pdf').slice(-5),
+        ['--input', '/tmp/input.pdf', '--output', '/tmp/output.pdf', '--skip-reference-images']
+    );
 });
 
 test('does not deliver an MW PDF back to its source group', () => {

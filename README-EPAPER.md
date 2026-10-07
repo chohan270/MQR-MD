@@ -106,8 +106,8 @@ Automatic/manual PDF work FIFO mein one-by-one process hota hai. Agar
 automatic mode off ho ya processing/send fail ho, pending PDF `.mw list` mein
 manual retry ke liye rehti hai. `.mw process all` queue ki PDFs process karta
 hai; pehle se delivered duplicate skip hoti hai. User ke diye hue PBK/ad
-reference images se match karne wali PDF automatic `.mw` processing mein
-poori skip hoti hai; manual `.mw process` ab bhi available rehta hai. Agar
+reference images se match karne wali PDF automatic aur manual dono `.mw`
+processing paths mein poori skip hoti hai. Agar
 source group bhi `.af epaper` target list mein ho to PDF usi group mein wapas
 nahi bheji jati. Date-first filename, misal `7 Oct 92 News Lahore.pdf`, output
 se pehle `92 News Lahore 7Oct.pdf` ban jata hai.

@@ -136,13 +136,16 @@ async function resolveMessage(sock, item) {
     return null;
 }
 
-function runMw(inputPath, outputPath, skipReferenceImages) {
+function buildMwArgs(inputPath, outputPath) {
+    const script = path.join(__dirname, '..', 'scripts', 'mw.py');
+    return [script, '--input', inputPath, '--output', outputPath, '--skip-reference-images'];
+}
+
+function runMw(inputPath, outputPath) {
     return new Promise((resolve, reject) => {
         const python = process.env.PYTHON_BIN || 'python3';
         const script = path.join(__dirname, '..', 'scripts', 'mw.py');
-        const args = [script, '--input', inputPath, '--output', outputPath];
-        if (skipReferenceImages) args.push('--skip-reference-images');
-        const child = spawn(python, args, { cwd: path.dirname(script) });
+        const child = spawn(python, buildMwArgs(inputPath, outputPath), { cwd: path.dirname(script) });
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
@@ -155,7 +158,7 @@ function runMw(inputPath, outputPath, skipReferenceImages) {
     });
 }
 
-async function processOne(sock, sessionId, item, targets, automatic = false) {
+async function processOne(sock, sessionId, item, targets) {
     const deliveryTargets = filterTargetGroups(targets, item.remoteJid);
     if (!deliveryTargets.length) {
         await malik_deletePdfQueueItem(sessionId, item._id);
@@ -185,7 +188,7 @@ async function processOne(sock, sessionId, item, targets, automatic = false) {
         const buffer = await downloadMediaMessage(source, 'buffer', {}, { logger: console });
         await fs.promises.mkdir(workDir, { recursive: true });
         await fs.promises.writeFile(inputPath, buffer);
-        const processing = await runMw(inputPath, outputPath, automatic);
+        const processing = await runMw(inputPath, outputPath);
         if (processing.skipped) {
             const released = await malik_releaseSharedPdfClaim(sessionId, sharedClaim);
             if (!released) throw new Error('Could not release the duplicate claim after skipping a reference image');
@@ -253,7 +256,7 @@ async function processIncomingPdf(sock, sessionId, message) {
         return { status: 'failed', fileName: item.fileName, error };
     }
 
-    const run = processingTail.then(() => processOne(sock, sessionId, item, targets, true));
+    const run = processingTail.then(() => processOne(sock, sessionId, item, targets));
     processingTail = run.catch(() => {});
     return run;
 }
@@ -293,5 +296,6 @@ module.exports = {
     processItems,
     isExcludedPdfSource,
     filterTargetGroups,
-    sanitizePdfFileName
+    sanitizePdfFileName,
+    buildMwArgs
 };
