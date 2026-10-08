@@ -2,7 +2,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeSharedPdfName, sharedPdfMatchesPaperKeyword } = require('../maliklib/database');
+const {
+    normalizeSharedPdfName,
+    sharedPdfMatchesPaperKeyword,
+    sharedPdfMatchesPaperIssue
+} = require('../maliklib/database');
 const { buildMwArgs, filterTargetGroups, isExcludedPdfSource, sanitizePdfFileName } = require('../maliklib/pdfQueue');
 
 test('normalizes MW and filename punctuation for shared duplicate matching', () => {
@@ -23,6 +27,25 @@ test('matches MW titles against newspaper keys recorded by the epaper sender', (
     assert.equal(sharedPdfMatchesPaperKeyword('Mashriq Akhbar 7Oct.pdf', 'mashriqakhbar'), true);
     assert.equal(sharedPdfMatchesPaperKeyword('Dawn Karachi 7Oct.pdf', 'jang'), false);
     assert.equal(sharedPdfMatchesPaperKeyword('Expressway Lahore 7Oct.pdf', 'express'), false);
+});
+
+test('cross-filename duplicate matching requires the same newspaper issue date', () => {
+    assert.equal(
+        sharedPdfMatchesPaperIssue('Express Lahore 8October.pdf', 'The Express MW - Lahore 8 Oct.pdf', 'express'),
+        true
+    );
+    assert.equal(
+        sharedPdfMatchesPaperIssue('Express Lahore 8October.pdf', 'The Express MW - Lahore 7 Oct.pdf', 'express'),
+        false
+    );
+    assert.equal(
+        sharedPdfMatchesPaperIssue('Express Lahore 8October.pdf', 'The News Lahore 8 Oct.pdf', 'express'),
+        false
+    );
+    assert.equal(
+        sharedPdfMatchesPaperIssue('Express Lahore 8October.pdf', 'Express Lahore.pdf', 'express'),
+        false
+    );
 });
 
 test('moves a leading day/month/year into the newspaper filename suffix', () => {

@@ -95,10 +95,10 @@ members ki PDFs normal process hoti hain.
 hote hain: normalized same filename successful send ke baad 24 ghante tak
 dobara process/send nahi hota. `.af epaper` ke newspaper keys bhi record hote
 hain; is liye Jang, Express, Ummat, Jinnah, Pakistan Observer aur configured
-newspapers ke matching naam wali `.mw` copy bhi 24 ghante ke andar skip hoti
-hai, chahe dono filenames bilkul ek jaise na hon. Record atomic claim se banta
-hai, taake same filename ki alag groups se aane wali copies double na bheji
-jayen. `.af epaper
+newspapers ke matching naam wali `.mw` copy bhi tabhi skip hoti hai jab dono
+filenames mein newspaper aur issue date match karein. Is se kal ki issue ki
+`.mw` copy aaj ke `.af epaper` send ko block nahi karti. Record atomic claim
+se banta hai, taake same filename ki alag groups se aane wali copies double na
 clearsent` current Pakistan-day ke records (shared records samet) clear karta
 hai.
 

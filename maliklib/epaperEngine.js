@@ -219,6 +219,7 @@ async function sendFiles(items, dateStr) {
             // No target groups set yet (or bot not connected) -- leave the
             // watermarked file sitting in /tmp so the next send/retry tick
             // can still deliver it instead of losing the work already done.
+            console.error(`[epaper] cannot send ${fileName}: ${!targets.length ? 'no target groups configured' : 'WhatsApp socket is not connected'}`);
             continue;
         }
 
@@ -229,11 +230,13 @@ async function sendFiles(items, dateStr) {
 
         const sharedClaim = await malik_claimSharedPdf(currentSessionId, fileName, `af:${key}`, key);
         if (!sharedClaim) {
+            console.log(`[epaper] skipping ${fileName}: matching PDF already sent/claimed (same issue date)`);
             await fs.remove(filePath).catch(() => {});
             await fs.remove(thumbPath).catch(() => {});
             continue;
         }
         if (!(await malik_claimEpaperFile(currentSessionId, dateStr, fileName, key))) {
+            console.log(`[epaper] skipping ${fileName}: already sent today`);
             await malik_releaseSharedPdfClaim(currentSessionId, sharedClaim);
             await fs.remove(filePath).catch(() => {});
             await fs.remove(thumbPath).catch(() => {});

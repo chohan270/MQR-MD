@@ -267,6 +267,46 @@ function sharedPdfMatchesPaperKeyword(fileName, paperKey) {
     });
 }
 
+function extractPdfIssueDate(fileName) {
+    const normalizedName = normalizeSharedPdfName(fileName)
+        .replace(/(\d)([a-z])/g, '$1 $2')
+        .replace(/([a-z])(\d)/g, '$1 $2');
+    const monthNumbers = {
+        jan: 1, january: 1,
+        feb: 2, february: 2,
+        mar: 3, march: 3,
+        apr: 4, april: 4,
+        may: 5,
+        jun: 6, june: 6,
+        jul: 7, july: 7,
+        aug: 8, august: 8,
+        sep: 9, sept: 9, september: 9,
+        oct: 10, october: 10,
+        nov: 11, november: 11,
+        dec: 12, december: 12
+    };
+    const monthPattern = Object.keys(monthNumbers).join('|');
+    const dayFirst = normalizedName.match(new RegExp(`\\b(\\d{1,2})\\s+(${monthPattern})\\b`));
+    const monthFirst = normalizedName.match(new RegExp(`\\b(${monthPattern})\\s+(\\d{1,2})\\b`));
+    const match = dayFirst || monthFirst;
+    if (!match) return null;
+
+    const day = Number(dayFirst ? match[1] : match[2]);
+    const month = monthNumbers[dayFirst ? match[2] : match[1]];
+    if (day < 1 || day > 31) return null;
+    return `${month}-${day}`;
+}
+
+function sharedPdfMatchesPaperIssue(fileName, otherFileName, paperKey) {
+    if (
+        !sharedPdfMatchesPaperKeyword(fileName, paperKey)
+        || !sharedPdfMatchesPaperKeyword(otherFileName, paperKey)
+    ) return false;
+
+    const issueDate = extractPdfIssueDate(fileName);
+    return issueDate !== null && issueDate === extractPdfIssueDate(otherFileName);
+}
+
 async function ensureSharedPdfIndexes(sessionId) {
     const key = sessionId || 'malik_session';
     if (!sharedPdfIndexMigrations.has(key)) {
@@ -913,11 +953,11 @@ async function malik_claimSharedPdf(sessionId, fileName, source, paperKey = '') 
         }).select('fileName source paperKey').lean();
         const matchingAf = recentAfRecords.find((record) => {
             const recordedKey = record.paperKey || record.source.slice(3);
-            return sharedPdfMatchesPaperKeyword(fileName, recordedKey);
+            return sharedPdfMatchesPaperIssue(fileName, record.fileName, recordedKey);
         });
         const matchingLegacy = legacyRecords.find((record) => (
             normalizeSharedPdfName(record.fileName) === normalizedName
-            || sharedPdfMatchesPaperKeyword(fileName, record.key)
+            || sharedPdfMatchesPaperIssue(fileName, record.fileName, record.key)
         ));
         if (matchingAf || matchingLegacy) return null;
     } else if (source.startsWith('af:') && candidateKey) {
@@ -927,7 +967,7 @@ async function malik_claimSharedPdf(sessionId, fileName, source, paperKey = '') 
             source: 'mw'
         }).select('fileName').lean();
         if (recentMwRecords.some((record) => (
-            sharedPdfMatchesPaperKeyword(record.fileName, candidateKey)
+            sharedPdfMatchesPaperIssue(fileName, record.fileName, candidateKey)
         ))) return null;
     }
 
@@ -1165,6 +1205,7 @@ module.exports = {
     malik_countSharedPdfRecords,
     normalizeSharedPdfName,
     sharedPdfMatchesPaperKeyword,
+    sharedPdfMatchesPaperIssue,
     malik_addPdfQueueItem,
     malik_listPdfQueue,
     malik_claimPdfQueueItem,
