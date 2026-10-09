@@ -710,8 +710,13 @@ def main():
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--skip-reference-images", action="store_true")
+    parser.add_argument("--reference-images-checked", action="store_true")
     args = parser.parse_args()
-    result = process_pdf(args.input, args.output, skip_reference_images=args.skip_reference_images)
+    result = process_pdf(
+        args.input,
+        args.output,
+        skip_reference_images=args.skip_reference_images and not args.reference_images_checked,
+    )
     if result is None:
         print(f"MW_SKIPPED_REFERENCE_IMAGE:{args.input}", flush=True)
         return

@@ -7,7 +7,13 @@ const {
     sharedPdfMatchesPaperKeyword,
     sharedPdfMatchesPaperIssue
 } = require('../maliklib/database');
-const { buildMwArgs, filterTargetGroups, isExcludedPdfSource, sanitizePdfFileName } = require('../maliklib/pdfQueue');
+const {
+    buildMwArgs,
+    buildSocialCleanerArgs,
+    filterTargetGroups,
+    isExcludedPdfSource,
+    sanitizePdfFileName
+} = require('../maliklib/pdfQueue');
 
 test('normalizes MW and filename punctuation for shared duplicate matching', () => {
     assert.equal(
@@ -53,9 +59,16 @@ test('moves a leading day/month/year into the newspaper filename suffix', () => 
 });
 
 test('enables reference-image skipping in both automatic and manual MW queue runs', () => {
+    assert.deepEqual(buildMwArgs('/tmp/input.pdf', '/tmp/output.pdf').slice(-6), [
+        '--input', '/tmp/input.pdf', '--output', '/tmp/output.pdf',
+        '--skip-reference-images', '--reference-images-checked'
+    ]);
+});
+
+test('runs the social watermark cleaner before MW processing in strict mode', () => {
     assert.deepEqual(
-        buildMwArgs('/tmp/input.pdf', '/tmp/output.pdf').slice(-5),
-        ['--input', '/tmp/input.pdf', '--output', '/tmp/output.pdf', '--skip-reference-images']
+        buildSocialCleanerArgs('/tmp/input.pdf', '/tmp/cleaned.pdf').slice(-4),
+        ['/tmp/input.pdf', '/tmp/cleaned.pdf', '--strict', '--skip-reference-images']
     );
 });
 

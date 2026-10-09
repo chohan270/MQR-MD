@@ -64,6 +64,8 @@ module.exports = {
                         '.mw list — view recent pending PDFs',
                         '.mw process all — manually process pending PDFs',
                         '',
+                        'Social Media/phone watermark cleanup runs before delivery for automatic and manual PDFs.',
+                        'If cleanup cannot verify removal, the PDF is not sent and an alert is sent to this personal chat.',
                         'Same normalized filename is shared with .af epaper for 24-hour duplicate protection.',
                         'Excluded groups: 120363026226973835@g.us, 923489517717-1546053015@g.us',
                         'Excluded senders in those groups: 81131932283065@lid, 87424696897621@lid'

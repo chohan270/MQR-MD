@@ -99,8 +99,15 @@ newspapers ke matching naam wali `.mw` copy bhi tabhi skip hoti hai jab dono
 filenames mein newspaper aur issue date match karein. Is se kal ki issue ki
 `.mw` copy aaj ke `.af epaper` send ko block nahi karti. Record atomic claim
 se banta hai, taake same filename ki alag groups se aane wali copies double na
-clearsent` current Pakistan-day ke records (shared records samet) clear karta
-hai.
+bheji jayen. `.af epaper clearsent` current Pakistan-day ke records (shared
+records samet) clear karta hai.
+
+Har automatic aur manual `.mw` PDF par Social Media/phone watermark cleaner
+delivery se pehle chalta hai. Agar cleaner kisi page par possible image-baked
+watermark detect kare ya cleanup verify na kar sake, PDF target groups ko nahi
+bheji jati, queue mein failed rehti hai, aur bot apne connected personal chat
+mein watermark-type alert bhejta hai. `.mw menu` mein is safety behavior ki
+details bhi di gayi hain.
 
 Automatic/manual PDF work FIFO mein one-by-one process hota hai. Agar
 automatic mode off ho ya processing/send fail ho, pending PDF `.mw list` mein

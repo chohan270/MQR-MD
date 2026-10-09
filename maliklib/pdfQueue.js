@@ -138,7 +138,18 @@ async function resolveMessage(sock, item) {
 
 function buildMwArgs(inputPath, outputPath) {
     const script = path.join(__dirname, '..', 'scripts', 'mw.py');
-    return [script, '--input', inputPath, '--output', outputPath, '--skip-reference-images'];
+    return [
+        script,
+        '--input', inputPath,
+        '--output', outputPath,
+        '--skip-reference-images',
+        '--reference-images-checked'
+    ];
+}
+
+function buildSocialCleanerArgs(inputPath, outputPath) {
+    const script = path.join(__dirname, '..', 'scripts', 'clean_social_media.py');
+    return [script, inputPath, outputPath, '--strict', '--skip-reference-images'];
 }
 
 function runMw(inputPath, outputPath) {
@@ -158,6 +169,87 @@ function runMw(inputPath, outputPath) {
     });
 }
 
+function runSocialCleaner(inputPath, outputPath) {
+    return new Promise((resolve, reject) => {
+        const python = process.env.PYTHON_BIN || 'python3';
+        const script = path.join(__dirname, '..', 'scripts', 'clean_social_media.py');
+        const child = spawn(python, buildSocialCleanerArgs(inputPath, outputPath), {
+            cwd: path.dirname(script)
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+        child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+        child.on('error', (error) => reject(makeSocialCleanerError({
+            status: 'verification-failed',
+            reason: error.message
+        })));
+        child.on('close', (code) => {
+            const marker = stdout.trim().split('\n').reverse()
+                .find((line) => line.startsWith('CLEAN_SOCIAL_MEDIA_RESULT:'));
+            let report;
+            if (marker) {
+                try {
+                    report = JSON.parse(marker.slice('CLEAN_SOCIAL_MEDIA_RESULT:'.length));
+                } catch (error) {
+                    report = {
+                        status: 'verification-failed',
+                        reason: `Cleaner returned invalid result JSON: ${error.message}`
+                    };
+                }
+            } else {
+                report = {
+                    status: 'verification-failed',
+                    reason: stderr.trim() || `Cleaner exited with code ${code} without a verification report`
+                };
+            }
+            if (code === 0 && report.status === 'reference-image-skipped') {
+                return resolve({ ...report, skipped: true });
+            }
+            if (code !== 0 || report.status !== 'cleaned') {
+                return reject(makeSocialCleanerError(report));
+            }
+            resolve(report);
+        });
+    });
+}
+
+function makeSocialCleanerError(report) {
+    const error = new Error(report.reason || 'Watermark cleanup could not be verified');
+    error.watermarkReport = report;
+    return error;
+}
+
+async function notifyOwnerOfWatermarkFailure(sock, fileName, report) {
+    const ownerJid = String(sock.user?.id || '').replace(/:\d+(?=@)/, '');
+    if (!ownerJid) {
+        console.error(`[PDF-QUEUE] cannot alert owner about watermark failure for ${fileName}: connected owner JID is unavailable`);
+        return;
+    }
+
+    const watermarkTypes = report.watermarkTypes?.length
+        ? report.watermarkTypes.join(', ')
+        : 'Image-baked or unidentified watermark (could not verify removal)';
+    const bakedPages = report.bakedPages?.length
+        ? `\nPages with possible image-baked watermark: ${report.bakedPages.join(', ')}`
+        : '';
+    const droppedPages = report.droppedAdPages?.length
+        ? `\nImage-only/ad pages removed by cleaner: ${report.droppedAdPages.join(', ')}`
+        : '';
+    const reason = report.reason ? `\nDetails: ${report.reason}` : '';
+    const text = [
+        '⚠️ *MW PDF not sent — watermark cleanup could not be verified*',
+        `File: ${fileName}`,
+        `Detected watermark type(s): ${watermarkTypes}${bakedPages}${droppedPages}${reason}`,
+        'The PDF was kept out of target groups and remains available in the MW queue.'
+    ].join('\n');
+    try {
+        await sock.sendMessage(ownerJid, { text });
+    } catch (error) {
+        console.error(`[PDF-QUEUE] owner alert failed for ${fileName}: ${error.message}`);
+    }
+}
+
 async function processOne(sock, sessionId, item, targets) {
     const deliveryTargets = filterTargetGroups(targets, item.remoteJid);
     if (!deliveryTargets.length) {
@@ -173,6 +265,7 @@ async function processOne(sock, sessionId, item, targets) {
     const base = `${Date.now()}-${safeName}`;
     const inputPath = path.join(workDir, `input-${base}`);
     const outputPath = path.join(workDir, `output-${base}`);
+    const cleanedPath = path.join(workDir, `cleaned-${base}`);
     const thumbPath = outputPath.replace(/\.pdf$/i, '.thumb.jpg');
     let sharedClaim = null;
     let deliveredAny = false;
@@ -188,7 +281,15 @@ async function processOne(sock, sessionId, item, targets) {
         const buffer = await downloadMediaMessage(source, 'buffer', {}, { logger: console });
         await fs.promises.mkdir(workDir, { recursive: true });
         await fs.promises.writeFile(inputPath, buffer);
-        const processing = await runMw(inputPath, outputPath);
+        const cleaning = await runSocialCleaner(inputPath, cleanedPath);
+        if (cleaning.skipped) {
+            const released = await malik_releaseSharedPdfClaim(sessionId, sharedClaim);
+            if (!released) throw new Error('Could not release the duplicate claim after skipping a reference image');
+            const removed = await malik_deletePdfQueueItem(sessionId, claimed._id);
+            if (!removed) throw new Error('Could not remove the skipped reference-image PDF from the queue');
+            return { status: 'reference-image-skipped', fileName: claimed.fileName };
+        }
+        const processing = await runMw(cleanedPath, outputPath);
         if (processing.skipped) {
             const released = await malik_releaseSharedPdfClaim(sessionId, sharedClaim);
             if (!released) throw new Error('Could not release the duplicate claim after skipping a reference image');
@@ -224,6 +325,9 @@ async function processOne(sock, sessionId, item, targets) {
         await malik_deletePdfQueueItem(sessionId, claimed._id);
         return { status: 'sent', fileName: claimed.fileName, deliveryErrors };
     } catch (error) {
+        if (error.watermarkReport) {
+            await notifyOwnerOfWatermarkFailure(sock, claimed.fileName, error.watermarkReport);
+        }
         if (sharedClaim && !deliveredAny) {
             await malik_releaseSharedPdfClaim(sessionId, sharedClaim).catch((releaseError) => {
                 console.error(`[PDF-QUEUE] could not release duplicate claim for ${claimed.fileName}: ${releaseError.message}`);
@@ -234,6 +338,7 @@ async function processOne(sock, sessionId, item, targets) {
     } finally {
         await fs.promises.rm(inputPath, { force: true }).catch(() => {});
         await fs.promises.rm(outputPath, { force: true }).catch(() => {});
+        await fs.promises.rm(cleanedPath, { force: true }).catch(() => {});
         await fs.promises.rm(thumbPath, { force: true }).catch(() => {});
     }
 }
@@ -297,5 +402,6 @@ module.exports = {
     isExcludedPdfSource,
     filterTargetGroups,
     sanitizePdfFileName,
-    buildMwArgs
+    buildMwArgs,
+    buildSocialCleanerArgs
 };

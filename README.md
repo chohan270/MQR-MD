@@ -25,10 +25,16 @@ PDFs received from any group or contact are recorded in MongoDB as metadata and 
 | Command | Purpose |
 | --- | --- |
 | `.mw list` | Show pending PDFs from the last 6 hours with their full filenames. |
-| `.mw process 1,2,3` | Download and process only the selected PDFs through `scripts/mw.py`. |
-| `.mw process all` | Process every queued PDF, including items older than the six-hour list window. |
+| `.mw process 1,2,3` | Download selected PDFs, clean social-media watermarks, then process through `scripts/mw.py`. |
+| `.mw process all` | Clean and process every queued PDF, including items older than the six-hour list window. |
 
 Processing uses a single queue worker, atomic MongoDB claims and temporary files that are deleted after each PDF. Reactions and commands sent in source groups do not process PDFs.
+
+Automatic and manual `.mw` runs first remove the configured social-media/phone
+watermarks, then continue through the existing MW processing and delivery path.
+If cleanup cannot verify a PDF (including an image-only page the cleaner cannot
+preserve safely), it is not sent and an alert is sent to the bot's connected
+personal chat with the detected watermark type or verification failure.
 
 📡 **Scheduled delivery** — Run newspaper downloads in Pakistan Standard Time.
 
