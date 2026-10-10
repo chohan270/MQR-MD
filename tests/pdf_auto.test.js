@@ -12,7 +12,8 @@ const {
     buildSocialCleanerArgs,
     filterTargetGroups,
     isExcludedPdfSource,
-    sanitizePdfFileName
+    sanitizePdfFileName,
+    DEFAULT_EXCLUDED_PDF_SOURCES
 } = require('../maliklib/pdfQueue');
 
 test('normalizes MW and filename punctuation for shared duplicate matching', () => {
@@ -104,4 +105,38 @@ test('excludes the configured senders only in the configured groups', () => {
             participant: '81131932283065@lid'
         }
     }), false);
+});
+
+test('supports persisted custom MW exclusion pairs without affecting other groups or senders', () => {
+    const exclusions = [
+        { groupJid: '120363000000000000@g.us', senderJids: ['123456789012@lid'] }
+    ];
+    assert.equal(isExcludedPdfSource({
+        key: {
+            remoteJid: '120363000000000000@g.us',
+            participantAlt: '123456789012@lid'
+        }
+    }, exclusions), true);
+    assert.equal(isExcludedPdfSource({
+        key: {
+            remoteJid: '120363000000000001@g.us',
+            participant: '123456789012@lid'
+        }
+    }, exclusions), false);
+    assert.equal(isExcludedPdfSource({
+        key: {
+            remoteJid: '120363000000000000@g.us',
+            participant: '987654321098@lid'
+        }
+    }, exclusions), false);
+});
+
+test('an explicitly empty exclusion list disables the legacy defaults', () => {
+    assert.equal(DEFAULT_EXCLUDED_PDF_SOURCES.length, 2);
+    assert.equal(isExcludedPdfSource({
+        key: {
+            remoteJid: '120363026226973835@g.us',
+            participant: '81131932283065@lid'
+        }
+    }, []), false);
 });

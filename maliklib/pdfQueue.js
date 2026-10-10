@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { DEFAULT_EXCLUDED_PDF_SOURCES } = require('./pdfExclusions');
 const {
     malik_addPdfQueueItem,
     malik_listPdfQueue,
@@ -23,18 +24,18 @@ const RETENTION_MS = PDF_QUEUE_RETENTION_HOURS * 60 * 60 * 1000;
 const messageCache = new Map();
 const mediaPersistenceTasks = new Map();
 let processingTail = Promise.resolve();
-const EXCLUDED_PDF_SOURCES = new Map([
-    ['120363026226973835@g.us', new Set(['81131932283065@lid', '87424696897621@lid'])],
-    ['923489517717-1546053015@g.us', new Set(['81131932283065@lid', '87424696897621@lid'])]
-]);
 
 function normalizeJid(jid) {
     return String(jid || '').toLowerCase().replace(/:\d+(?=@)/, '');
 }
 
-function isExcludedPdfSource(message) {
-    const excludedSenders = EXCLUDED_PDF_SOURCES.get(normalizeJid(message?.key?.remoteJid));
-    if (!excludedSenders) return false;
+function isExcludedPdfSource(message, excludedSources = DEFAULT_EXCLUDED_PDF_SOURCES) {
+    const groupJid = normalizeJid(message?.key?.remoteJid);
+    const excludedEntry = (excludedSources || []).find(
+        (entry) => normalizeJid(entry.groupJid) === groupJid
+    );
+    if (!excludedEntry) return false;
+    const excludedSenders = new Set((excludedEntry.senderJids || []).map(normalizeJid));
     const senders = [
         message.key.participant,
         message.key.participantAlt,
@@ -90,8 +91,8 @@ function messageKey(key) {
     return `${key.remoteJid || ''}:${key.id || ''}`;
 }
 
-function rememberPdf(message) {
-    if (isExcludedPdfSource(message)) return null;
+function rememberPdf(message, excludedSources = DEFAULT_EXCLUDED_PDF_SOURCES) {
+    if (isExcludedPdfSource(message, excludedSources)) return null;
     const document = unwrapMessage(message?.message).documentMessage;
     if (!document || document.mimetype !== 'application/pdf' && !document.fileName?.toLowerCase().endsWith('.pdf')) return null;
     const key = messageKey(message.key);
@@ -101,7 +102,11 @@ function rememberPdf(message) {
         messageKey: key,
         remoteJid: message.key.remoteJid,
         messageId: message.key.id,
-        participant: message.key.participant || '',
+        participant: message.key.participant
+            || message.key.participantAlt
+            || message.key.participantPn
+            || message.key.participantLid
+            || '',
         fileName,
         mimetype: document.mimetype || 'application/pdf',
         receivedAt: new Date(message.messageTimestamp ? Number(message.messageTimestamp) * 1000 : Date.now())
@@ -126,8 +131,12 @@ async function persistPdfMedia(sessionId, item, message) {
     }
 }
 
-async function rememberAndQueue(sessionId, message, sock = null) {
-    const item = rememberPdf(message);
+async function rememberAndQueue(sessionId, message, sock = null, excludedSources = null) {
+    if (!excludedSources) {
+        const config = await malik_getEpaperConfig(sessionId);
+        excludedSources = config?.excludedPdfSources || DEFAULT_EXCLUDED_PDF_SOURCES;
+    }
+    const item = rememberPdf(message, excludedSources);
     if (!item) return null;
     const queued = await malik_addPdfQueueItem(sessionId, item);
     if (queued && sock) {
@@ -280,7 +289,16 @@ async function notifyOwnerOfWatermarkFailure(sock, fileName, report) {
     }
 }
 
-async function processOne(sock, sessionId, item, targets) {
+async function processOne(sock, sessionId, item, targets, excludedSources = DEFAULT_EXCLUDED_PDF_SOURCES) {
+    if (isExcludedPdfSource({
+        key: {
+            remoteJid: item.remoteJid,
+            participant: item.participant
+        }
+    }, excludedSources)) {
+        return { status: 'excluded', fileName: item.fileName };
+    }
+
     const deliveryTargets = filterTargetGroups(targets, item.remoteJid);
     if (!deliveryTargets.length) {
         await malik_deletePdfQueueItem(sessionId, item._id);
@@ -389,14 +407,15 @@ async function processOne(sock, sessionId, item, targets) {
 }
 
 async function processIncomingPdf(sock, sessionId, message) {
-    if (isExcludedPdfSource(message)) return { status: 'excluded' };
-    const item = await rememberAndQueue(sessionId, message, sock);
+    const config = await malik_getEpaperConfig(sessionId);
+    const excludedSources = config?.excludedPdfSources || DEFAULT_EXCLUDED_PDF_SOURCES;
+    if (isExcludedPdfSource(message, excludedSources)) return { status: 'excluded' };
+    const item = await rememberAndQueue(sessionId, message, sock, excludedSources);
     if (!item) throw new Error('Could not save the incoming PDF in the MongoDB queue');
     if (!String(message?.key?.remoteJid || '').endsWith('@g.us')) {
         return { status: 'queued', fileName: item.fileName };
     }
 
-    const config = await malik_getEpaperConfig(sessionId);
     if (config?.mwAutoEnabled === false) return { status: 'queued', fileName: item.fileName };
 
     const targets = config?.targetJids || [];
@@ -406,7 +425,7 @@ async function processIncomingPdf(sock, sessionId, message) {
         return { status: 'failed', fileName: item.fileName, error };
     }
 
-    const run = processingTail.then(() => processOne(sock, sessionId, item, targets));
+    const run = processingTail.then(() => processOne(sock, sessionId, item, targets, excludedSources));
     processingTail = run.catch(() => {});
     return run;
 }
@@ -414,6 +433,7 @@ async function processIncomingPdf(sock, sessionId, message) {
 async function processItems(sock, sessionId, ids) {
     const cfg = await malik_getEpaperConfig(sessionId);
     const targets = cfg?.targetJids || [];
+    const excludedSources = cfg?.excludedPdfSources || DEFAULT_EXCLUDED_PDF_SOURCES;
     if (!targets.length) throw new Error('E-paper target groups are not configured');
     const items = await malik_listPdfQueue(sessionId);
     const recentItems = await malik_listPdfQueue(sessionId, new Date(Date.now() - RETENTION_MS));
@@ -422,7 +442,9 @@ async function processItems(sock, sessionId, ids) {
         : recentItems.filter((item, index) => ids.includes(String(index + 1)) || ids.includes(String(item._id)));
     const run = processingTail.then(async () => {
         const results = [];
-        for (const item of selected) results.push(await processOne(sock, sessionId, item, targets));
+        for (const item of selected) {
+            results.push(await processOne(sock, sessionId, item, targets, excludedSources));
+        }
         return results;
     });
     processingTail = run.catch(() => {});
@@ -448,5 +470,6 @@ module.exports = {
     filterTargetGroups,
     sanitizePdfFileName,
     buildMwArgs,
-    buildSocialCleanerArgs
+    buildSocialCleanerArgs,
+    DEFAULT_EXCLUDED_PDF_SOURCES
 };

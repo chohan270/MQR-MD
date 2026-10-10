@@ -63,12 +63,111 @@ module.exports = {
                         '.mw auto off — keep incoming PDFs in the manual queue',
                         '.mw list — view recent pending PDFs',
                         '.mw process all — manually process pending PDFs',
+                        '.mw exclude list — view excluded group/sender pairs',
+                        '.mw exclude add <group@g.us> <senderJid[,senderJid]> — add exclusions',
+                        '.mw exclude remove <group@g.us> <senderJid[,senderJid]> — remove exclusions',
                         '',
                         'Social Media/phone watermark cleanup runs before delivery for automatic and manual PDFs.',
                         'If cleanup cannot verify removal, the PDF is not sent and an alert is sent to this personal chat.',
                         'Same normalized filename is shared with .af epaper for 24-hour duplicate protection.',
-                        'Excluded groups: 120363026226973835@g.us, 923489517717-1546053015@g.us',
-                        'Excluded senders in those groups: 81131932283065@lid, 87424696897621@lid'
+                        'PDF exclusions apply to the listed sender JIDs only within each listed group.'
+                    ])
+                }, { quoted: malik_msg });
+            }
+            if (mwAction === 'exclude') {
+                const operation = mwArgs[1]?.toLowerCase() || 'list';
+                const config = await malik_getEpaperConfig(sessionId);
+                const exclusions = (config?.excludedPdfSources || pdfQueue.DEFAULT_EXCLUDED_PDF_SOURCES)
+                    .map((entry) => ({
+                        groupJid: String(entry.groupJid || '').toLowerCase(),
+                        senderJids: [...(entry.senderJids || [])].map((jid) => String(jid).toLowerCase())
+                    }));
+
+                if (operation === 'list') {
+                    const lines = exclusions.length
+                        ? exclusions.flatMap((entry) => [
+                            `Group: ${entry.groupJid}`,
+                            ...entry.senderJids.map((jid) => `  • ${jid}`)
+                        ])
+                        : ['No excluded group/sender pairs configured.'];
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('MW PDF EXCLUSIONS', [
+                            ...lines,
+                            '',
+                            'Add: .mw exclude add <group@g.us> <senderJid[,senderJid]>',
+                            'Remove: .mw exclude remove <group@g.us> <senderJid[,senderJid]>'
+                        ])
+                    }, { quoted: malik_msg });
+                }
+
+                if (!['add', 'remove'].includes(operation)) {
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('MW PDF EXCLUSIONS', [
+                            '❌ Usage: .mw exclude list',
+                            '.mw exclude add <group@g.us> <senderJid[,senderJid]>',
+                            '.mw exclude remove <group@g.us> <senderJid[,senderJid]>'
+                        ])
+                    }, { quoted: malik_msg });
+                }
+
+                const groupJid = (mwArgs[2] || '').toLowerCase().replace(/:\d+(?=@)/, '');
+                const senderJids = [...new Set(
+                    mwArgs.slice(3).join(' ').split(/[,\s]+/)
+                        .map((jid) => jid.toLowerCase().replace(/:\d+(?=@)/, ''))
+                        .filter(Boolean)
+                )];
+                const validGroup = /^\d{5,}(?:-\d+)?@g\.us$/.test(groupJid);
+                const invalidSenders = senderJids.filter(
+                    (jid) => !/^\d{5,}@(s\.whatsapp\.net|lid|c\.us)$/.test(jid)
+                );
+                if (!validGroup || !senderJids.length || invalidSenders.length) {
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('MW PDF EXCLUSIONS', [
+                            '❌ Provide one valid group JID and one or more sender JIDs.',
+                            'Sender JIDs may be comma-separated (including @lid).',
+                            'Example: .mw exclude add 120363000000000000@g.us 123456789012@s.whatsapp.net,987654321098@lid'
+                        ])
+                    }, { quoted: malik_msg });
+                }
+
+                let changed = [];
+                if (operation === 'add') {
+                    let entry = exclusions.find((item) => item.groupJid === groupJid);
+                    if (!entry) {
+                        entry = { groupJid, senderJids: [] };
+                        exclusions.push(entry);
+                    }
+                    changed = senderJids.filter((jid) => !entry.senderJids.includes(jid));
+                    entry.senderJids = [...new Set([...entry.senderJids, ...senderJids])];
+                } else {
+                    const entry = exclusions.find((item) => item.groupJid === groupJid);
+                    changed = senderJids.filter((jid) => entry?.senderJids.includes(jid));
+                    if (entry) {
+                        entry.senderJids = entry.senderJids.filter((jid) => !senderJids.includes(jid));
+                        if (!entry.senderJids.length) {
+                            exclusions.splice(exclusions.indexOf(entry), 1);
+                        }
+                    }
+                }
+
+                if (!changed.length) {
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('MW PDF EXCLUSIONS', [
+                            operation === 'add' ? 'ℹ️ All provided pairs are already excluded.' : 'ℹ️ No matching exclusion pairs were found.'
+                        ])
+                    }, { quoted: malik_msg });
+                }
+
+                const updated = await malik_updateEpaperConfig(sessionId, { excludedPdfSources: exclusions });
+                if (!updated) {
+                    return await sock.sendMessage(from, {
+                        text: commandPanel('MW PDF EXCLUSIONS', ['❌ Could not save exclusions. Check the MongoDB connection.'])
+                    }, { quoted: malik_msg });
+                }
+                return await sock.sendMessage(from, {
+                    text: commandPanel('MW PDF EXCLUSIONS', [
+                        `✅ ${operation === 'add' ? 'Added' : 'Removed'} ${changed.length} sender exclusion(s) for ${groupJid}.`,
+                        ...changed.map((jid) => `• ${jid}`)
                     ])
                 }, { quoted: malik_msg });
             }

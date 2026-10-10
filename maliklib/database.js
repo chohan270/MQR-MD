@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 const { Readable } = require('stream');
+const { DEFAULT_EXCLUDED_PDF_SOURCES } = require('./pdfExclusions');
 
 
 
@@ -126,6 +127,16 @@ const malik_epaperConfigSchema = new mongoose.Schema({
     enabled: { type: Boolean, default: false },
     mwAutoEnabled: { type: Boolean, default: true },
     targetJids: { type: [String], default: [] },
+    excludedPdfSources: {
+        type: [{
+            groupJid: { type: String, required: true },
+            senderJids: { type: [String], default: [] }
+        }],
+        default: () => DEFAULT_EXCLUDED_PDF_SOURCES.map((entry) => ({
+            groupJid: entry.groupJid,
+            senderJids: [...entry.senderJids]
+        }))
+    },
     primaryJid: { type: String, default: '' },
     lastRun: { type: Date, default: null },
     lastRunSummary: { type: String, default: '' },

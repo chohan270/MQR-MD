@@ -78,7 +78,14 @@ kar sakta hai — ya `.env`/DB mein defined sudo).
 .mw auto on / .mw auto off               → new group PDFs ki automatic processing on/off
 .mw list                                 → recent manual/retry PDF queue dekho
 .mw process all                          → pending PDFs manually process karo
+.mw exclude list                         → excluded group/sender pairs dekho
+.mw exclude add <group@g.us> <senderJid[,senderJid]> → sender(s) ko us group mein exclude karo
+.mw exclude remove <group@g.us> <senderJid[,senderJid]> → exclusion pair(s) hatao
 ```
+
+MW PDF exclusions group-scoped hain: sender sirf us group se aane par exclude hota hai.
+Existing default exclusion pairs saved configuration mein load hote hain; remove karne ke baad
+woh dobara default ke taur par add nahi honge. Empty list bhi valid configuration hai.
 
 ### Automatic group PDF workflow
 
@@ -87,9 +94,10 @@ process karke `.af epaper set` wale target groups mein bhejta hai. `.mw auto off
 automatic sending rok kar nayi PDFs manual queue mein rakhta hai; `.mw auto on`
 usay dobara chalu karta hai.
 
-In do groups mein configured dono sender IDs ki PDFs queue/process nahi hotin:
-`120363026226973835@g.us` aur `923489517717-1546053015@g.us`. Baqi group
-members ki PDFs normal process hoti hain.
+Initial excluded group/sender pairs `.mw exclude list` mein dikhte hain.
+`.mw exclude add` aur `.mw exclude remove` se unhein manage karein; sender sirf
+corresponding group mein post karne par exclude hota hai. Empty list se tamam
+sender exclusions disable ho jati hain.
 
 `.mw` aur `.af epaper` dono MongoDB ke shared filename record se deduplicate
 hote hain: normalized same filename successful send ke baad 24 ghante tak
