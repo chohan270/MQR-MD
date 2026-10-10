@@ -65,10 +65,10 @@ test('enables reference-image skipping in both automatic and manual MW queue run
     ]);
 });
 
-test('runs the social watermark cleaner before MW processing in strict mode', () => {
+test('runs the social watermark cleaner before MW processing and keeps reference-image skipping', () => {
     assert.deepEqual(
         buildSocialCleanerArgs('/tmp/input.pdf', '/tmp/cleaned.pdf').slice(-4),
-        ['/tmp/input.pdf', '/tmp/cleaned.pdf', '--strict', '--skip-reference-images']
+        ['/tmp/input.pdf', '/tmp/cleaned.pdf', '--skip-reference-images']
     );
 });
 

@@ -103,11 +103,12 @@ bheji jayen. `.af epaper clearsent` current Pakistan-day ke records (shared
 records samet) clear karta hai.
 
 Har automatic aur manual `.mw` PDF par Social Media/phone watermark cleaner
-delivery se pehle chalta hai. Agar cleaner kisi page par possible image-baked
-watermark detect kare ya cleanup verify na kar sake, PDF target groups ko nahi
-bheji jati, queue mein failed rehti hai, aur bot apne connected personal chat
-mein watermark-type alert bhejta hai. `.mw menu` mein is safety behavior ki
-details bhi di gayi hain.
+delivery se pehle chalta hai. Agar cleanup ke baad target watermark text phir
+bhi maujood ho, PDF target groups ko nahi bheji jati, queue mein failed rehti
+hai, aur bot apne connected personal chat mein us watermark type ka alert
+bhejta hai. Image-only newspaper pages normal pages hain: unhein ad ya
+watermark samajh kar drop/block nahi kiya jata. `.mw menu` mein is safety
+behavior ki details bhi di gayi hain.
 
 Automatic/manual PDF work FIFO mein one-by-one process hota hai. Agar
 automatic mode off ho ya processing/send fail ho, pending PDF `.mw list` mein

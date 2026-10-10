@@ -32,9 +32,9 @@ Processing uses a single queue worker, atomic MongoDB claims and temporary files
 
 Automatic and manual `.mw` runs first remove the configured social-media/phone
 watermarks, then continue through the existing MW processing and delivery path.
-If cleanup cannot verify a PDF (including an image-only page the cleaner cannot
-preserve safely), it is not sent and an alert is sent to the bot's connected
-personal chat with the detected watermark type or verification failure.
+Image-only newspaper pages are preserved. A PDF is held back only when known
+watermark text remains after cleanup; the bot alerts its connected personal
+chat with the detected watermark type.
 
 📡 **Scheduled delivery** — Run newspaper downloads in Pakistan Standard Time.
 

@@ -149,7 +149,7 @@ function buildMwArgs(inputPath, outputPath) {
 
 function buildSocialCleanerArgs(inputPath, outputPath) {
     const script = path.join(__dirname, '..', 'scripts', 'clean_social_media.py');
-    return [script, inputPath, outputPath, '--strict', '--skip-reference-images'];
+    return [script, inputPath, outputPath, '--skip-reference-images'];
 }
 
 function runMw(inputPath, outputPath) {
@@ -229,18 +229,12 @@ async function notifyOwnerOfWatermarkFailure(sock, fileName, report) {
 
     const watermarkTypes = report.watermarkTypes?.length
         ? report.watermarkTypes.join(', ')
-        : 'Image-baked or unidentified watermark (could not verify removal)';
-    const bakedPages = report.bakedPages?.length
-        ? `\nPages with possible image-baked watermark: ${report.bakedPages.join(', ')}`
-        : '';
-    const droppedPages = report.droppedAdPages?.length
-        ? `\nImage-only/ad pages removed by cleaner: ${report.droppedAdPages.join(', ')}`
-        : '';
+        : 'Cleanup/verification error (watermark type not identified)';
     const reason = report.reason ? `\nDetails: ${report.reason}` : '';
     const text = [
         '⚠️ *MW PDF not sent — watermark cleanup could not be verified*',
         `File: ${fileName}`,
-        `Detected watermark type(s): ${watermarkTypes}${bakedPages}${droppedPages}${reason}`,
+        `Detected watermark type(s): ${watermarkTypes}${reason}`,
         'The PDF was kept out of target groups and remains available in the MW queue.'
     ].join('\n');
     try {

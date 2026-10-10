@@ -388,7 +388,7 @@ def main_form_name(xobjs):
 
 
 def clean_page(reader, page, matcher, stats):
-    """Return 'ok' | 'ad' | 'baked' for the page (page is edited in place)."""
+    """Return 'ok' | 'image-only' for the page (page is edited in place)."""
     mb = page.mediabox
     px0, py0, px1, py1 = float(mb.left), float(mb.bottom), float(mb.right), float(mb.top)
     W, H = px1 - px0, py1 - py0
@@ -398,12 +398,6 @@ def clean_page(reader, page, matcher, stats):
     xobjs = res.get("/XObject")
     xobjs = xobjs.get_object() if xobjs is not None else {}
     main = main_form_name(xobjs)
-
-    # --- ad page: koi newspaper layer nahi, sirf image ---
-    if main is None:
-        imgs = [k for k in xobjs if xobjs[k].get_object().get("/Subtype") == "/Image"]
-        if imgs:
-            return "ad"
 
     # recursive scan of forms (newspaper layer ke andar chhupa text bhi)
     seen = set()
@@ -506,9 +500,9 @@ def clean_page(reader, page, matcher, stats):
             if not len(d):
                 del res[key]
 
-    # baked (flatten) warning: koi vector layer nahi mili aur page me bas image hai
+    # Image-only pages are preserved because they may be normal newspaper scans.
     if main is None and stats["text_removed"] == 0 and "/XObject" in res:
-        return "baked"
+        return "image-only"
     return "ok"
 
 
@@ -520,7 +514,6 @@ def main():
     ap.add_argument("--extra", action="append", default=[], help="extra blacklist word/number")
     ap.add_argument("--keep-ad-pages", action="store_true")
     ap.add_argument("--debug", action="store_true")
-    ap.add_argument("--strict", action="store_true", help="fail if any page has an unremovable image-baked watermark")
     ap.add_argument("--skip-reference-images", action="store_true")
     args = ap.parse_args()
     DEBUG = args.debug
@@ -540,35 +533,29 @@ def main():
     writer = PdfWriter()
     total, kept = len(reader.pages), 0
     totals = {"text_removed": 0, "strips_removed": 0, "annots_removed": 0}
-    baked_pages = []
-    dropped_pages = []
+    image_only_pages = []
 
     for i, page in enumerate(reader.pages, 1):
         stats = {"text_removed": 0, "strips_removed": 0, "annots_removed": 0}
         kind = clean_page(reader, page, matcher, stats)
         for k in totals:
             totals[k] += stats[k]
-        if kind == "ad" and not args.keep_ad_pages:
-            dropped_pages.append(i)
-            print(f"[{i}/{total}] dropped  (social media rules/ad page)")
-            continue
-        if kind == "baked":
-            baked_pages.append(i)
+        if kind == "image-only":
+            image_only_pages.append(i)
         writer.add_page(page)
         kept += 1
         msg = (f"text objects removed: {stats['text_removed']}, "
                f"strips removed: {stats['strips_removed']}")
         if stats["annots_removed"]:
             msg += f", annotations removed: {stats['annots_removed']}"
-        if kind == "baked":
-            msg += "  | WARNING: page image me baked hai (vector watermark nahi mila)"
+        if kind == "image-only":
+            msg += "  | image-only page preserved (no selectable text to inspect)"
         print(f"[{i}/{total}] cleaned  ({msg})")
 
     result = {
         "status": "cleaned",
         "watermarkTypes": sorted(matcher.detected),
-        "bakedPages": baked_pages,
-        "droppedAdPages": dropped_pages,
+        "imageOnlyPages": image_only_pages,
         "pages": total,
         "keptPages": kept,
         "removed": totals,
@@ -578,16 +565,20 @@ def main():
         result["reason"] = "Cleaner removed all pages; output was not sent."
         print(f"CLEAN_SOCIAL_MEDIA_RESULT:{json.dumps(result)}", flush=True)
         return 4
-    if args.strict and baked_pages:
-        result["status"] = "unremovable-watermark"
-        result["reason"] = "Possible image-baked watermark could not be safely removed."
-        print(f"CLEAN_SOCIAL_MEDIA_RESULT:{json.dumps(result)}", flush=True)
-        return 3
-
     writer.add_metadata({"/Title": args.output.rsplit(".", 1)[0]})
     writer.compress_identical_objects(remove_identicals=True, remove_orphans=True)
     with open(args.output, "wb") as f:
         writer.write(f)
+    remaining = Matcher(args.extra)
+    cleaned_reader = PdfReader(args.output)
+    for page in cleaned_reader.pages:
+        remaining.hit(page.extract_text() or "", whole=False)
+    if remaining.detected:
+        result["status"] = "watermark-not-removed"
+        result["watermarkTypes"] = sorted(remaining.detected)
+        result["reason"] = "Target watermark text remains after cleanup; output was not sent."
+        print(f"CLEAN_SOCIAL_MEDIA_RESULT:{json.dumps(result)}", flush=True)
+        return 3
     print(f"\nDone: {kept}/{total} pages -> {args.output}")
     print(f"Total: {totals['text_removed']} text ops, {totals['strips_removed']} strips, "
           f"{totals['annots_removed']} annots removed")
