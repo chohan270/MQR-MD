@@ -20,7 +20,7 @@ The main bot workflow is message forwarding. Configure sources, targets and grou
 
 ### Owner PDF Queue
 
-PDFs received from any group or contact are recorded in MongoDB as metadata and remain queued across bot restarts until successfully processed. They are not downloaded, modified or forwarded automatically. `.mw list` shows pending PDFs from the last 6 hours; `.mw process all` can process all pending items, including older ones. From the bot owner's private chat, use:
+PDFs received from any group or contact are stored in MongoDB, including the original PDF media, and remain queued across bot restarts until successfully processed. They are not modified or forwarded automatically. `.mw list` shows pending PDFs from the last 6 hours; `.mw process all` can process all pending items, including older ones. From the bot owner's private chat, use:
 
 | Command | Purpose |
 | --- | --- |
@@ -28,7 +28,7 @@ PDFs received from any group or contact are recorded in MongoDB as metadata and 
 | `.mw process 1,2,3` | Download selected PDFs, clean social-media watermarks, then process through `scripts/mw.py`. |
 | `.mw process all` | Clean and process every queued PDF, including items older than the six-hour list window. |
 
-Processing uses a single queue worker, atomic MongoDB claims and temporary files that are deleted after each PDF. Reactions and commands sent in source groups do not process PDFs.
+Processing uses a single queue worker, atomic MongoDB claims and temporary files that are deleted after each PDF. Original WhatsApp media is saved in MongoDB GridFS when received, so retries do not depend on WhatsApp retaining the source message. Legacy queue entries without a stored media copy still use WhatsApp history when available; if it is no longer available, resend that PDF to a group to queue a durable copy. Reactions and commands sent in source groups do not process PDFs.
 
 Automatic and manual `.mw` runs first remove the configured social-media/phone
 watermarks, then continue through the existing MW processing and delivery path.

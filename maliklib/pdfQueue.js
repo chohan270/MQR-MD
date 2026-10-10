@@ -11,6 +11,9 @@ const {
     malik_updatePdfQueueItem,
     malik_deletePdfQueueItem,
     malik_getEpaperConfig,
+    malik_storePdfQueueMedia,
+    malik_getPdfQueueMedia,
+    malik_updatePdfQueueItem,
     malik_claimSharedPdf,
     malik_markSharedPdfSent,
     malik_releaseSharedPdfClaim
@@ -19,6 +22,7 @@ const {
 const PDF_QUEUE_RETENTION_HOURS = 6;
 const RETENTION_MS = PDF_QUEUE_RETENTION_HOURS * 60 * 60 * 1000;
 const messageCache = new Map();
+const mediaPersistenceTasks = new Map();
 let processingTail = Promise.resolve();
 const EXCLUDED_PDF_SOURCES = new Map([
     ['120363026226973835@g.us', new Set(['81131932283065@lid', '87424696897621@lid'])],
@@ -105,9 +109,42 @@ function rememberPdf(message) {
     };
 }
 
-async function rememberAndQueue(sessionId, message) {
+async function persistPdfMedia(sessionId, item, message) {
+    if (item.mediaFileId) return item.mediaFileId;
+
+    const taskKey = item.messageKey;
+    if (mediaPersistenceTasks.has(taskKey)) return mediaPersistenceTasks.get(taskKey);
+
+    const task = (async () => {
+        const buffer = await downloadMediaMessage(message, 'buffer', {}, { logger: console });
+        return malik_storePdfQueueMedia(sessionId, item._id, Buffer.from(buffer));
+    })();
+    mediaPersistenceTasks.set(taskKey, task);
+    try {
+        return await task;
+    } finally {
+        mediaPersistenceTasks.delete(taskKey);
+    }
+}
+
+async function rememberAndQueue(sessionId, message, sock = null) {
     const item = rememberPdf(message);
-    return item ? malik_addPdfQueueItem(sessionId, item) : null;
+    if (!item) return null;
+    const queued = await malik_addPdfQueueItem(sessionId, item);
+    if (queued && sock) {
+        try {
+            await persistPdfMedia(sessionId, queued, message);
+        } catch (error) {
+            await malik_updatePdfQueueItem(
+                sessionId,
+                queued._id,
+                'failed',
+                `Could not save original PDF media in MongoDB: ${error.message}`
+            );
+            throw error;
+        }
+    }
+    return queued;
 }
 
 async function resolveMessage(sock, item) {
@@ -270,9 +307,24 @@ async function processOne(sock, sessionId, item, targets) {
             return { status: 'duplicate', fileName: claimed.fileName };
         }
 
-        const source = await resolveMessage(sock, claimed);
-        if (!source) throw new Error('Original PDF message is no longer available on WhatsApp');
-        const buffer = await downloadMediaMessage(source, 'buffer', {}, { logger: console });
+        let buffer = null;
+        if (claimed.mediaFileId) {
+            try {
+                buffer = await malik_getPdfQueueMedia(sessionId, claimed.mediaFileId);
+            } catch (error) {
+                console.warn(`[PDF-QUEUE] stored media unavailable for ${claimed.fileName}; trying WhatsApp history: ${error.message}`);
+            }
+        }
+        if (!buffer) {
+            const source = await resolveMessage(sock, claimed);
+            if (!source) {
+                throw new Error(
+                    'Original PDF message is no longer available on WhatsApp, and no stored copy exists. Resend the PDF to a group to create a retryable queue copy.'
+                );
+            }
+            buffer = Buffer.from(await downloadMediaMessage(source, 'buffer', {}, { logger: console }));
+            await malik_storePdfQueueMedia(sessionId, claimed._id, buffer);
+        }
         await fs.promises.mkdir(workDir, { recursive: true });
         await fs.promises.writeFile(inputPath, buffer);
         const cleaning = await runSocialCleaner(inputPath, cleanedPath);
@@ -339,7 +391,7 @@ async function processOne(sock, sessionId, item, targets) {
 
 async function processIncomingPdf(sock, sessionId, message) {
     if (isExcludedPdfSource(message)) return { status: 'excluded' };
-    const item = await rememberAndQueue(sessionId, message);
+    const item = await rememberAndQueue(sessionId, message, sock);
     if (!item) throw new Error('Could not save the incoming PDF in the MongoDB queue');
     if (!String(message?.key?.remoteJid || '').endsWith('@g.us')) {
         return { status: 'queued', fileName: item.fileName };

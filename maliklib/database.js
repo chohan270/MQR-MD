@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
+const { Readable } = require('stream');
 
 
 
@@ -167,6 +168,7 @@ const malik_pdfQueueSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'processing', 'sent', 'failed'], default: 'pending' },
     processingAt: { type: Date, default: null },
     error: { type: String, default: '' },
+    mediaFileId: { type: String, default: '' },
     processedAt: { type: Date, default: null }
 });
 const malik_sharedPdfSchema = new mongoose.Schema({
@@ -1081,6 +1083,65 @@ async function malik_addPdfQueueItem(sessionId, item) {
     }
 }
 
+function getPdfQueueMediaBucket(sessionId) {
+    if (!isConnected || !mongoose.connection.db) {
+        throw new Error('MongoDB is not connected; queued PDF media cannot be persisted');
+    }
+    const bucketName = `${sessionId || 'malik_session'}_pdf_queue_media`;
+    return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName });
+}
+
+async function malik_storePdfQueueMedia(sessionId, id, buffer) {
+    if (!isConnected) throw new Error('MongoDB is not connected; queued PDF media cannot be persisted');
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error('Cannot persist an empty PDF attachment');
+
+    const Model = getModel(sessionId, 'PdfQueue');
+    const item = await Model.findById(id).select('mediaFileId fileName').lean();
+    if (!item) throw new Error('PDF queue item no longer exists');
+    if (item.mediaFileId) return item.mediaFileId;
+
+    const bucket = getPdfQueueMediaBucket(sessionId);
+    const upload = bucket.openUploadStream(item.fileName, {
+        metadata: { queueItemId: String(id) }
+    });
+    const fileId = await new Promise((resolve, reject) => {
+        upload.once('error', reject);
+        upload.once('finish', () => resolve(upload.id.toString()));
+        Readable.from([buffer]).pipe(upload);
+    });
+
+    const result = await Model.updateOne(
+        { _id: id, $or: [{ mediaFileId: '' }, { mediaFileId: { $exists: false } }] },
+        { $set: { mediaFileId: fileId } }
+    );
+    if (result.modifiedCount === 1) return fileId;
+
+    await bucket.delete(new mongoose.Types.ObjectId(fileId));
+    const current = await Model.findById(id).select('mediaFileId').lean();
+    if (current?.mediaFileId) return current.mediaFileId;
+    throw new Error('Could not attach stored PDF media to its queue record');
+}
+
+async function malik_getPdfQueueMedia(sessionId, fileId) {
+    if (!isConnected) throw new Error('MongoDB is not connected; queued PDF media cannot be read');
+    if (!fileId) return null;
+
+    const bucket = getPdfQueueMediaBucket(sessionId);
+    const chunks = [];
+    await new Promise((resolve, reject) => {
+        const download = bucket.openDownloadStream(new mongoose.Types.ObjectId(fileId));
+        download.on('data', (chunk) => chunks.push(chunk));
+        download.once('error', reject);
+        download.once('end', resolve);
+    });
+    return Buffer.concat(chunks);
+}
+
+async function deletePdfQueueMedia(sessionId, fileId) {
+    if (!fileId || !isConnected) return;
+    await getPdfQueueMediaBucket(sessionId).delete(new mongoose.Types.ObjectId(fileId));
+}
+
 async function malik_listPdfQueue(sessionId, since) {
     if (!isConnected) return [];
     try {
@@ -1150,7 +1211,13 @@ async function malik_deletePdfQueueItem(sessionId, id) {
     try {
         await ensurePdfQueuePersistence(sessionId);
         const Model = getModel(sessionId, 'PdfQueue');
+        const item = await Model.findById(id).select('mediaFileId').lean();
         await Model.deleteOne({ _id: id });
+        if (item?.mediaFileId) {
+            await deletePdfQueueMedia(sessionId, item.mediaFileId).catch((error) => {
+                console.error('DB Error deletePdfQueueMedia:', error);
+            });
+        }
         return true;
     } catch (e) {
         console.error('DB Error deletePdfQueueItem:', e);
@@ -1207,6 +1274,8 @@ module.exports = {
     sharedPdfMatchesPaperKeyword,
     sharedPdfMatchesPaperIssue,
     malik_addPdfQueueItem,
+    malik_storePdfQueueMedia,
+    malik_getPdfQueueMedia,
     malik_listPdfQueue,
     malik_claimPdfQueueItem,
     malik_updatePdfQueueItem,
