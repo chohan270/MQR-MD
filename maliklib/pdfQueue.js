@@ -13,7 +13,6 @@ const {
     malik_getEpaperConfig,
     malik_storePdfQueueMedia,
     malik_getPdfQueueMedia,
-    malik_updatePdfQueueItem,
     malik_claimSharedPdf,
     malik_markSharedPdfSent,
     malik_releaseSharedPdfClaim
