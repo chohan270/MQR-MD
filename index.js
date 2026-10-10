@@ -439,6 +439,16 @@ async function startSession(sessionId) {
             sessionState.isConnected = true;
             sessionState.qr = null;
             console.log(`✅ ${sessionId}: Connected to WhatsApp`);
+            pdfQueue.processRecentItems(malik_sock, sessionId)
+                .then((results) => {
+                    const sent = results.filter((result) => result.status === 'sent').length;
+                    if (results.length) {
+                        console.log(`[PDF-QUEUE] startup recovery finished: ${sent}/${results.length} recent PDF(s) sent or handled`);
+                    }
+                })
+                .catch((error) => {
+                    console.error(`[PDF-QUEUE] startup recovery failed: ${error.message}`);
+                });
             try {
                 epaperEngine.init(malik_sock, sessionId);
                 epaperEngine.updateSocket(malik_sock);
@@ -628,8 +638,11 @@ async function startSession(sessionId) {
 const MALIK_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const MALIK_TEMP_DIR = path.join(__dirname, 'temp');
 const MALIK_TEMP_FILE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
+let malik_cacheCleanupRunning = false;
 
-function malik_performCacheCleanup() {
+async function malik_performCacheCleanup() {
+    if (malik_cacheCleanupRunning) return;
+    malik_cacheCleanupRunning = true;
     try {
         const expiry = Date.now() - MALIK_PDF_CACHE_TTL_MS;
         for (const [key, cached] of malik_pdfCache.entries()) {
@@ -654,6 +667,16 @@ function malik_performCacheCleanup() {
             }
         }
 
+        await pdfQueue.cleanupTemporaryFiles();
+        for (const [sessionId, sessionState] of sessions) {
+            if (!sessionState.isConnected) continue;
+            try {
+                await pdfQueue.cleanupExpiredItems(sessionId);
+            } catch (error) {
+                console.error(`[PDF-QUEUE] retention cleanup failed for ${sessionId}: ${error.message}`);
+            }
+        }
+
         // 2. Nudge garbage collection if Node was started with --expose-gc
         if (typeof global.gc === 'function') {
             global.gc();
@@ -662,6 +685,8 @@ function malik_performCacheCleanup() {
         console.log(`🧹 [Cache Cleanup] Cache & garbage cleaned. Session, SourceJids & TargetJids untouched — bot stays connected and fast.`);
     } catch (e) {
         console.error('Cache Cleanup Error:', e.message);
+    } finally {
+        malik_cacheCleanupRunning = false;
     }
 }
 
@@ -686,12 +711,19 @@ async function main() {
                 if (dbResult) console.log('✅ Database connected');
             }
 
+            await pdfQueue.cleanupTemporaryFiles();
+
             // Start default session
             const sessionId = config.sessionId || 'malik_session';
+            try {
+                await pdfQueue.cleanupExpiredItems(sessionId);
+            } catch (error) {
+                console.error(`[PDF-QUEUE] startup retention cleanup failed for ${sessionId}: ${error.message}`);
+            }
             await startSession(sessionId);
 
             // 4. Start the 5-minute cache/garbage cleanup loop (session-safe, non-disruptive)
-            setInterval(malik_performCacheCleanup, MALIK_CLEANUP_INTERVAL_MS);
+            setInterval(() => { void malik_performCacheCleanup(); }, MALIK_CLEANUP_INTERVAL_MS);
         } catch (err) {
             console.error('❌ Initialization Error:', err);
         }

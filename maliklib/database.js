@@ -167,6 +167,7 @@ const malik_epaperSentFileSchema = new mongoose.Schema({
     sentAt: { type: Date, default: Date.now }
 });
 malik_epaperSentFileSchema.index({ date: 1, fileName: 1 }, { unique: true });
+malik_epaperSentFileSchema.index({ sentAt: 1 }, { expireAfterSeconds: 24 * 60 * 60 });
 
 const malik_pdfQueueSchema = new mongoose.Schema({
     messageKey: { type: String, required: true, unique: true },
@@ -197,6 +198,8 @@ malik_sharedPdfSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 let isConnected = false;
 const pdfQueueIndexMigrations = new Map();
 const sharedPdfIndexMigrations = new Map();
+const epaperSentFileIndexMigrations = new Map();
+const pdfQueueMediaWriteTails = new Map();
 
 // ---------------------------------------------------------------------------
 // DYNAMIC MODEL HELPER
@@ -334,6 +337,28 @@ async function ensureSharedPdfIndexes(sessionId) {
         sharedPdfIndexMigrations.set(key, migration);
     }
     await sharedPdfIndexMigrations.get(key);
+}
+
+async function ensureEpaperSentFileIndexes(sessionId) {
+    const key = sessionId || 'malik_session';
+    if (!epaperSentFileIndexMigrations.has(key)) {
+        const Model = getModel(sessionId, 'EpaperSentFile');
+        const migration = Promise.all([
+            Model.collection.createIndex(
+                { date: 1, fileName: 1 },
+                { unique: true }
+            ),
+            Model.collection.createIndex(
+                { sentAt: 1 },
+                { expireAfterSeconds: 24 * 60 * 60 }
+            )
+        ]).catch((error) => {
+            epaperSentFileIndexMigrations.delete(key);
+            throw error;
+        });
+        epaperSentFileIndexMigrations.set(key, migration);
+    }
+    await epaperSentFileIndexMigrations.get(key);
 }
 
 async function ensurePdfQueuePersistence(sessionId) {
@@ -888,6 +913,7 @@ async function malik_isEpaperFileSent(sessionId, date, fileName) {
 async function malik_claimEpaperFile(sessionId, date, fileName, key) {
     if (!isConnected) return true;
     try {
+        await ensureEpaperSentFileIndexes(sessionId);
         const Model = getModel(sessionId, 'EpaperSentFile');
         await Model.create({ date, fileName, key, sentAt: new Date() });
         return true;
@@ -950,6 +976,7 @@ async function malik_claimSharedPdf(sessionId, fileName, source, paperKey = '') 
     if (!normalizedName) throw new Error('Cannot deduplicate a PDF without a valid filename');
     await ensureSharedPdfIndexes(sessionId);
 
+    await ensureEpaperSentFileIndexes(sessionId);
     const Model = getModel(sessionId, 'SharedPdf');
     const now = new Date();
     const legacyRecords = await getModel(sessionId, 'EpaperSentFile')
@@ -1102,7 +1129,15 @@ function getPdfQueueMediaBucket(sessionId) {
     return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName });
 }
 
-async function malik_storePdfQueueMedia(sessionId, id, buffer) {
+function malik_storePdfQueueMedia(sessionId, id, buffer) {
+    const key = sessionId || 'malik_session';
+    const previous = pdfQueueMediaWriteTails.get(key) || Promise.resolve();
+    const task = previous.then(() => storePdfQueueMedia(sessionId, id, buffer));
+    pdfQueueMediaWriteTails.set(key, task.catch(() => {}));
+    return task;
+}
+
+async function storePdfQueueMedia(sessionId, id, buffer) {
     if (!isConnected) throw new Error('MongoDB is not connected; queued PDF media cannot be persisted');
     if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error('Cannot persist an empty PDF attachment');
 
@@ -1112,6 +1147,17 @@ async function malik_storePdfQueueMedia(sessionId, id, buffer) {
     if (item.mediaFileId) return item.mediaFileId;
 
     const bucket = getPdfQueueMediaBucket(sessionId);
+    const filesCollection = mongoose.connection.db.collection(`${sessionId || 'malik_session'}_pdf_queue_media.files`);
+    const [mediaUsage] = await filesCollection.aggregate([
+        { $group: { _id: null, bytes: { $sum: '$length' } } }
+    ]).toArray();
+    const mediaLimitBytes = 64 * 1024 * 1024;
+    if ((mediaUsage?.bytes || 0) + buffer.length > mediaLimitBytes) {
+        console.warn(
+            `[PDF-QUEUE] not persisting ${item.fileName}: queued source-media limit of ${mediaLimitBytes} bytes reached`
+        );
+        return null;
+    }
     const upload = bucket.openUploadStream(item.fileName, {
         metadata: { queueItemId: String(id) }
     });
@@ -1150,7 +1196,11 @@ async function malik_getPdfQueueMedia(sessionId, fileId) {
 
 async function deletePdfQueueMedia(sessionId, fileId) {
     if (!fileId || !isConnected) return;
-    await getPdfQueueMediaBucket(sessionId).delete(new mongoose.Types.ObjectId(fileId));
+    const objectId = new mongoose.Types.ObjectId(fileId);
+    const bucketName = `${sessionId || 'malik_session'}_pdf_queue_media`;
+    const files = mongoose.connection.db.collection(`${bucketName}.files`);
+    if (!await files.findOne({ _id: objectId }, { projection: { _id: 1 } })) return;
+    await getPdfQueueMediaBucket(sessionId).delete(objectId);
 }
 
 async function malik_listPdfQueue(sessionId, since) {
@@ -1223,17 +1273,63 @@ async function malik_deletePdfQueueItem(sessionId, id) {
         await ensurePdfQueuePersistence(sessionId);
         const Model = getModel(sessionId, 'PdfQueue');
         const item = await Model.findById(id).select('mediaFileId').lean();
-        await Model.deleteOne({ _id: id });
+        const deleted = await Model.deleteOne({ _id: id });
+        if (deleted.deletedCount !== 1) return false;
         if (item?.mediaFileId) {
-            await deletePdfQueueMedia(sessionId, item.mediaFileId).catch((error) => {
-                console.error('DB Error deletePdfQueueMedia:', error);
-            });
+            await deletePdfQueueMedia(sessionId, item.mediaFileId);
         }
         return true;
     } catch (e) {
         console.error('DB Error deletePdfQueueItem:', e);
         return false;
     }
+}
+
+async function malik_cleanupExpiredPdfQueue(sessionId, cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000)) {
+    if (!isConnected) throw new Error('MongoDB is not connected');
+    await ensurePdfQueuePersistence(sessionId);
+    const Model = getModel(sessionId, 'PdfQueue');
+    const staleProcessingBefore = new Date(Date.now() - 15 * 60 * 1000);
+    const expiredItems = await Model.find({
+        receivedAt: { $lt: cutoff },
+        $or: [
+            { status: { $ne: 'processing' } },
+            { processingAt: null },
+            { processingAt: { $lte: staleProcessingBefore } }
+        ]
+    }).select('_id mediaFileId').lean();
+
+    let removedItems = 0;
+    let removedMedia = 0;
+    const bucket = getPdfQueueMediaBucket(sessionId);
+    for (const item of expiredItems) {
+        const deleted = await Model.deleteOne({ _id: item._id, receivedAt: { $lt: cutoff } });
+        if (deleted.deletedCount !== 1) continue;
+        removedItems += 1;
+        if (item.mediaFileId) {
+            await deletePdfQueueMedia(sessionId, item.mediaFileId);
+            removedMedia += 1;
+        }
+    }
+
+    const filesCollection = mongoose.connection.db.collection(
+        `${sessionId || 'malik_session'}_pdf_queue_media.files`
+    );
+    const expiredMedia = await filesCollection.find(
+        { uploadDate: { $lt: cutoff } },
+        { projection: { _id: 1, 'metadata.queueItemId': 1 } }
+    ).toArray();
+    for (const media of expiredMedia) {
+        const queueId = media.metadata?.queueItemId;
+        const queueItem = queueId && mongoose.Types.ObjectId.isValid(queueId)
+            ? await Model.findById(queueId).select('_id').lean()
+            : null;
+        if (queueItem) continue;
+        await bucket.delete(media._id);
+        removedMedia += 1;
+    }
+
+    return { removedItems, removedMedia };
 }
 
 module.exports = {
@@ -1290,5 +1386,6 @@ module.exports = {
     malik_listPdfQueue,
     malik_claimPdfQueueItem,
     malik_updatePdfQueueItem,
-    malik_deletePdfQueueItem
+    malik_deletePdfQueueItem,
+    malik_cleanupExpiredPdfQueue
 };

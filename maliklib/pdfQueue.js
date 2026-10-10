@@ -14,6 +14,7 @@ const {
     malik_getEpaperConfig,
     malik_storePdfQueueMedia,
     malik_getPdfQueueMedia,
+    malik_cleanupExpiredPdfQueue,
     malik_claimSharedPdf,
     malik_markSharedPdfSent,
     malik_releaseSharedPdfClaim
@@ -21,6 +22,8 @@ const {
 
 const PDF_QUEUE_RETENTION_HOURS = 6;
 const RETENTION_MS = PDF_QUEUE_RETENTION_HOURS * 60 * 60 * 1000;
+const PDF_PROCESS_TIMEOUT_MS = 15 * 60 * 1000;
+const PDF_TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const messageCache = new Map();
 const mediaPersistenceTasks = new Map();
 let processingTail = Promise.resolve();
@@ -155,6 +158,26 @@ async function rememberAndQueue(sessionId, message, sock = null, excludedSources
     return queued;
 }
 
+function armProcessTimeout(child, description) {
+    let timedOut = false;
+    let forceKillTimer;
+    const timeout = setTimeout(() => {
+        timedOut = true;
+        console.error(`[PDF-QUEUE] ${description} exceeded ${PDF_PROCESS_TIMEOUT_MS / 60000} minutes; terminating it`);
+        child.kill('SIGTERM');
+        forceKillTimer = setTimeout(() => child.kill('SIGKILL'), 10 * 1000);
+        forceKillTimer.unref();
+    }, PDF_PROCESS_TIMEOUT_MS);
+    timeout.unref();
+    const clearTimers = () => {
+        clearTimeout(timeout);
+        if (forceKillTimer) clearTimeout(forceKillTimer);
+    };
+    child.once('close', clearTimers);
+    child.once('error', clearTimers);
+    return () => timedOut;
+}
+
 async function resolveMessage(sock, item) {
     const cached = messageCache.get(item.messageKey);
     if (cached && cached.expiresAt > Date.now()) return cached.message;
@@ -202,12 +225,14 @@ function runMw(inputPath, outputPath) {
         const python = process.env.PYTHON_BIN || 'python3';
         const script = path.join(__dirname, '..', 'scripts', 'mw.py');
         const child = spawn(python, buildMwArgs(inputPath, outputPath), { cwd: path.dirname(script) });
+        const timedOut = armProcessTimeout(child, `mw.py for ${path.basename(inputPath)}`);
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
         child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
         child.on('error', reject);
         child.on('close', (code) => {
+            if (timedOut()) return reject(new Error('mw.py timed out after 15 minutes'));
             if (code !== 0) return reject(new Error(stderr || `mw.py exited with ${code}`));
             resolve({ skipped: stdout.includes('MW_SKIPPED_REFERENCE_IMAGE:') });
         });
@@ -221,6 +246,7 @@ function runSocialCleaner(inputPath, outputPath) {
         const child = spawn(python, buildSocialCleanerArgs(inputPath, outputPath), {
             cwd: path.dirname(script)
         });
+        const timedOut = armProcessTimeout(child, `social cleaner for ${path.basename(inputPath)}`);
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
@@ -230,6 +256,12 @@ function runSocialCleaner(inputPath, outputPath) {
             reason: error.message
         })));
         child.on('close', (code) => {
+            if (timedOut()) {
+                return reject(makeSocialCleanerError({
+                    status: 'verification-failed',
+                    reason: 'Social watermark cleaner timed out after 15 minutes'
+                }));
+            }
             const marker = stdout.trim().split('\n').reverse()
                 .find((line) => line.startsWith('CLEAN_SOCIAL_MEDIA_RESULT:'));
             let report;
@@ -301,7 +333,9 @@ async function processOne(sock, sessionId, item, targets, excludedSources = DEFA
 
     const deliveryTargets = filterTargetGroups(targets, item.remoteJid);
     if (!deliveryTargets.length) {
-        await malik_deletePdfQueueItem(sessionId, item._id);
+        const deleted = await malik_deletePdfQueueItem(sessionId, item._id);
+        if (!deleted) throw new Error(`Could not remove ${item.fileName} from the PDF queue`);
+        messageCache.delete(item.messageKey);
         return { status: 'source-is-only-target', fileName: item.fileName };
     }
 
@@ -350,6 +384,7 @@ async function processOne(sock, sessionId, item, targets, excludedSources = DEFA
             if (!released) throw new Error('Could not release the duplicate claim after skipping a reference image');
             const removed = await malik_deletePdfQueueItem(sessionId, claimed._id);
             if (!removed) throw new Error('Could not remove the skipped reference-image PDF from the queue');
+            messageCache.delete(claimed.messageKey);
             return { status: 'reference-image-skipped', fileName: claimed.fileName };
         }
         const processing = await runMw(cleanedPath, outputPath);
@@ -358,6 +393,7 @@ async function processOne(sock, sessionId, item, targets, excludedSources = DEFA
             if (!released) throw new Error('Could not release the duplicate claim after skipping a reference image');
             const removed = await malik_deletePdfQueueItem(sessionId, claimed._id);
             if (!removed) throw new Error('Could not remove the skipped reference-image PDF from the queue');
+            messageCache.delete(claimed.messageKey);
             return { status: 'reference-image-skipped', fileName: claimed.fileName };
         }
         let jpegThumbnail;
@@ -384,8 +420,8 @@ async function processOne(sock, sessionId, item, targets, excludedSources = DEFA
         if (!deliveredAny) throw new Error(`PDF send failed for every target: ${deliveryErrors.join('; ')}`);
         const recorded = await malik_markSharedPdfSent(sessionId, sharedClaim, claimed.fileName, 'mw');
         if (!recorded) throw new Error('PDF was sent, but its shared duplicate record could not be saved');
-        await malik_updatePdfQueueItem(sessionId, claimed._id, 'sent');
-        await malik_deletePdfQueueItem(sessionId, claimed._id);
+        const deleted = await malik_deletePdfQueueItem(sessionId, claimed._id);
+        if (!deleted) throw new Error('PDF was sent and duplicate metadata saved, but its queue/media cleanup failed');
         return { status: 'sent', fileName: claimed.fileName, deliveryErrors };
     } catch (error) {
         if (error.watermarkReport) {
@@ -399,6 +435,7 @@ async function processOne(sock, sessionId, item, targets, excludedSources = DEFA
         await malik_updatePdfQueueItem(sessionId, claimed._id, 'failed', error.message);
         return { status: 'failed', fileName: claimed.fileName, error: error.message };
     } finally {
+        if (deliveredAny) messageCache.delete(item.messageKey);
         await fs.promises.rm(inputPath, { force: true }).catch(() => {});
         await fs.promises.rm(outputPath, { force: true }).catch(() => {});
         await fs.promises.rm(cleanedPath, { force: true }).catch(() => {});
@@ -410,13 +447,20 @@ async function processIncomingPdf(sock, sessionId, message) {
     const config = await malik_getEpaperConfig(sessionId);
     const excludedSources = config?.excludedPdfSources || DEFAULT_EXCLUDED_PDF_SOURCES;
     if (isExcludedPdfSource(message, excludedSources)) return { status: 'excluded' };
-    const item = await rememberAndQueue(sessionId, message, sock, excludedSources);
+    const isGroup = String(message?.key?.remoteJid || '').endsWith('@g.us');
+    const autoEnabled = config?.mwAutoEnabled !== false;
+    const item = await rememberAndQueue(
+        sessionId,
+        message,
+        isGroup && autoEnabled ? null : sock,
+        excludedSources
+    );
     if (!item) throw new Error('Could not save the incoming PDF in the MongoDB queue');
     if (!String(message?.key?.remoteJid || '').endsWith('@g.us')) {
         return { status: 'queued', fileName: item.fileName };
     }
 
-    if (config?.mwAutoEnabled === false) return { status: 'queued', fileName: item.fileName };
+    if (!autoEnabled) return { status: 'queued', fileName: item.fileName };
 
     const targets = config?.targetJids || [];
     if (!targets.length) {
@@ -439,7 +483,9 @@ async function processItems(sock, sessionId, ids) {
     const recentItems = await malik_listPdfQueue(sessionId, new Date(Date.now() - RETENTION_MS));
     const selected = ids === 'all'
         ? items
-        : recentItems.filter((item, index) => ids.includes(String(index + 1)) || ids.includes(String(item._id)));
+        : ids === 'recent'
+            ? recentItems.filter((item) => item.remoteJid?.endsWith('@g.us'))
+            : recentItems.filter((item, index) => ids.includes(String(index + 1)) || ids.includes(String(item._id)));
     const run = processingTail.then(async () => {
         const results = [];
         for (const item of selected) {
@@ -449,6 +495,49 @@ async function processItems(sock, sessionId, ids) {
     });
     processingTail = run.catch(() => {});
     return run;
+}
+
+async function processRecentItems(sock, sessionId) {
+    const config = await malik_getEpaperConfig(sessionId);
+    if (config?.mwAutoEnabled === false) return [];
+    return processItems(sock, sessionId, 'recent');
+}
+
+async function cleanupExpiredItems(sessionId) {
+    const result = await malik_cleanupExpiredPdfQueue(
+        sessionId,
+        new Date(Date.now() - RETENTION_MS)
+    );
+    if (result.removedItems || result.removedMedia) {
+        console.log(
+            `[PDF-QUEUE] retention cleanup removed ${result.removedItems} expired queue item(s) and ${result.removedMedia} media file(s)`
+        );
+    }
+    return result;
+}
+
+async function cleanupTemporaryFiles() {
+    const workDir = path.join('/tmp', 'mqr_pdf_queue');
+    let entries;
+    try {
+        entries = await fs.promises.readdir(workDir, { withFileTypes: true });
+    } catch (error) {
+        if (error.code === 'ENOENT') return 0;
+        throw error;
+    }
+
+    const cutoff = Date.now() - PDF_TEMP_FILE_MAX_AGE_MS;
+    let removed = 0;
+    for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const filePath = path.join(workDir, entry.name);
+        const stat = await fs.promises.stat(filePath);
+        if (stat.mtimeMs >= cutoff) continue;
+        await fs.promises.rm(filePath, { force: true });
+        removed += 1;
+    }
+    if (removed) console.log(`[PDF-QUEUE] removed ${removed} stale temporary processing file(s)`);
+    return removed;
 }
 
 function listItems(sessionId) {
@@ -466,6 +555,9 @@ module.exports = {
     processIncomingPdf,
     listItems,
     processItems,
+    processRecentItems,
+    cleanupExpiredItems,
+    cleanupTemporaryFiles,
     isExcludedPdfSource,
     filterTargetGroups,
     sanitizePdfFileName,

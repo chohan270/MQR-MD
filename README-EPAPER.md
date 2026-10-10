@@ -110,6 +110,16 @@ se banta hai, taake same filename ki alag groups se aane wali copies double na
 bheji jayen. `.af epaper clearsent` current Pakistan-day ke records (shared
 records samet) clear karta hai.
 
+Successful `.mw` send ke baad queue record aur GridFS source PDF foran delete
+hote hain; duplicate-prevention metadata 24 ghante tak MongoDB mein rehta hai.
+Auto-processing mode mein incoming group PDF ko foran process kiya jata hai
+aur queue ke liye pehle se MongoDB media copy nahi banayi jati. Manual queue
+mode mein source-media ka MongoDB budget 64 MiB hai. Queue ke expired records aur
+un ki media har 5 minute mein clean hoti hai; queue retention 6 ghante hai.
+Bot reconnect hone par pichlay 6 ghanton ke pending group PDFs resume karta hai.
+Stale cleaner/processor jobs 15 minute ke baad terminate hote hain, aur Heroku
+`/tmp` mein bachi processing files bhi clean hoti hain.
+
 Har automatic aur manual `.mw` PDF par Social Media/phone watermark cleaner
 delivery se pehle chalta hai. Agar cleanup ke baad target watermark text phir
 bhi maujood ho, PDF target groups ko nahi bheji jati, queue mein failed rehti
