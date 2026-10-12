@@ -82,6 +82,19 @@ WHITESPACE_MIN_PERCENT = 1.0     # white band agar page height ke itne % se zyad
 # treated as a newspaper input and is only used as the final branded tail.
 EXTRA_LAST_PDF = os.path.join(_ASSETS_DIR, "pbk.pdf")
 
+# ---- Required page-level ownership branding (applied to every newspaper page)
+# This is intentionally different from the old cleanup logic: it adds a visible
+# custom watermark on the page instead of trying to erase an external one.
+BRAND_WATERMARK_TEXT = os.environ.get(
+    "MW_BRAND_TEXT",
+    "Abb Takk Drama Serial Group - 0303-2487070",
+)
+BRAND_WATERMARK_OPACITY = float(os.environ.get("MW_BRAND_OPACITY", "0.15"))
+BRAND_WATERMARK_FONT_SIZE = int(os.environ.get("MW_BRAND_FONT_SIZE", "25"))
+BRAND_WATERMARK_ROTATION = int(os.environ.get("MW_BRAND_ROTATION", "45"))
+BRAND_WATERMARK_MARGIN = int(os.environ.get("MW_BRAND_MARGIN", "20"))
+BRAND_WATERMARK_SPACING = int(os.environ.get("MW_BRAND_SPACING", "130"))
+
 # ===================================================
 
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -227,6 +240,59 @@ def build_front_page_overlay(page, settings):
     return overlay
 
 
+def build_branding_overlay(page, text=None):
+    """Every page ko rotated left/right brand watermark se mark karta hai."""
+    text = (text or BRAND_WATERMARK_TEXT or "").strip()
+    if not text:
+        return None
+
+    page_box = page.mediabox
+    left = float(page_box.left)
+    bottom = float(page_box.bottom)
+    page_width = max(float(page_box.width), 1.0)
+    page_height = max(float(page_box.height), 1.0)
+
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(page_width, page_height))
+    pdf.setFillColorRGB(0.72, 0.72, 0.72)
+    pdf.setStrokeColorRGB(0.72, 0.72, 0.72)
+    pdf.setFillAlpha(BRAND_WATERMARK_OPACITY)
+    pdf.setStrokeAlpha(BRAND_WATERMARK_OPACITY)
+    pdf.setFont("Helvetica-Bold", BRAND_WATERMARK_FONT_SIZE)
+
+    for offset in range(BRAND_WATERMARK_MARGIN, int(page_height - BRAND_WATERMARK_MARGIN), BRAND_WATERMARK_SPACING):
+        for x, angle in (
+            (BRAND_WATERMARK_MARGIN, BRAND_WATERMARK_ROTATION),
+            (page_width - BRAND_WATERMARK_MARGIN, -BRAND_WATERMARK_ROTATION),
+        ):
+            pdf.saveState()
+            pdf.translate(x, offset)
+            pdf.rotate(angle)
+            pdf.drawCentredString(0, 0, text)
+            pdf.restoreState()
+
+    pdf.save()
+    buffer.seek(0)
+    overlay = PdfReader(buffer).pages[0]
+    overlay.mediabox = RectangleObject(
+        [left, bottom, left + page_width, bottom + page_height]
+    )
+    return overlay
+
+
+def apply_branding_to_page(page, text=None):
+    """Page ko ownership branding overlay ke sath return karta hai."""
+    overlay = build_branding_overlay(page, text=text)
+    if overlay is None:
+        return page
+
+    writer = PdfWriter()
+    writer.add_page(page)
+    branded_page = writer.pages[0]
+    branded_page.merge_page(overlay)
+    return branded_page
+
+
 def build_watermarked_front_page_for_page(front_page):
     """Original first page preserve karke us par watermark overlay merge karta hai."""
     img = render_page_image(front_page)
@@ -276,14 +342,16 @@ def process_pdf(pdf_path, output_path):
     for idx, page in enumerate(reader.pages):
         if idx == 0:
             if watermarked_front is not None:
-                writer.add_page(watermarked_front)
+                page_to_write = apply_branding_to_page(watermarked_front)
+                writer.add_page(page_to_write)
                 print("  ✅ Page 1 (front page) watermark ho gaya")
             else:
-                writer.add_page(page)
+                page_to_write = apply_branding_to_page(page)
+                writer.add_page(page_to_write)
                 print("  ⚠️ Page 1 mein image nahi mili, watermark skip (as-is copy)")
                 front_img = None
             continue
-        writer.add_page(page)
+        writer.add_page(apply_branding_to_page(page))
 
     if EXTRA_LAST_PDF and os.path.exists(EXTRA_LAST_PDF):
         for p in PdfReader(EXTRA_LAST_PDF).pages:

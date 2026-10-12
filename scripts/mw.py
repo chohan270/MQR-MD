@@ -25,6 +25,7 @@ PROMO_KEYWORDS = [
     "whatsapp", "whats app", "social media", "join our group", "join group", "group link"
 ]
 BOTTOM_WATERMARK_TEXT = "Social Media Pakistan 0342-4938217"
+BRAND_WATERMARK_TEXT = wm.BRAND_WATERMARK_TEXT
 WATERMARK_PATCH_PADDING = 2
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 _SKIP_HASHES_PATH = _ASSETS_DIR / "mw_auto_skip_image_hashes.json"
@@ -691,7 +692,8 @@ def process_pdf(pdf_path, output_path, skip_reference_images=False):
     front_page, front_image = build_front_watermark(pages[0])
     writer = PdfWriter()
     for index, page in enumerate(pages):
-        writer.add_page(front_page if index == 0 and front_page is not None else page)
+        final_page = front_page if index == 0 and front_page is not None else page
+        writer.add_page(wm.apply_branding_to_page(final_page))
 
     extra_pdf = wm.EXTRA_LAST_PDF
     if extra_pdf and os.path.exists(extra_pdf):
