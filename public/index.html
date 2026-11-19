@@ -187,6 +187,10 @@
         }
         .pairing-code-display.active { display: block; }
         .pairing-msg { margin-top: 10px; font-size: 12px; text-align: center; font-weight: 600; }
+        .reset-section { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border); }
+        .btn-danger { background: linear-gradient(145deg, #ff5f5f, #d62839); }
+        .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+        .reset-msg { margin-top: 10px; font-size: 12px; text-align: center; font-weight: 600; }
         .config-section { background: rgba(0, 0, 0, 0.25); border-radius: 24px; padding: 20px; margin-bottom: 24px; border: 1px solid rgba(255,255,255,0.03); }
         .config-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; color: var(--accent); display: flex; align-items: center; gap: 8px; justify-content: space-between; }
         .form-group { margin-bottom: 16px; }
@@ -320,6 +324,14 @@
                     </div>
                     <div class="pairing-code-display" id="pairingCodeDisplay"></div>
                     <div class="pairing-msg" id="pairingMsg"></div>
+                </div>
+
+                <!-- Reset Session / Re-Pair -->
+                <div class="reset-section">
+                    <button type="button" class="btn btn-danger" id="resetSessionBtn" onclick="resetSession()">
+                        <i class="fas fa-rotate"></i> Reset Session / Re-Pair
+                    </button>
+                    <div class="reset-msg" id="resetMsg"></div>
                 </div>
             </div>
             
@@ -555,6 +567,65 @@
             } catch (e) {
                 msg.style.color = '#ff4d4d';
                 msg.textContent = 'Error requesting pairing code.';
+            }
+        }
+
+        // Reset Session / Re-Pair: deletes the paired session data and prepares a fresh QR / pairing code
+        async function resetSession() {
+            if (!confirm('Kya aap sure hain? Bot ka current WhatsApp session delete ho jayega aur dobara pair karna hoga.\n(Source/Target JIDs aur settings safe rahengi)')) return;
+
+            const btn = document.getElementById('resetSessionBtn');
+            const msg = document.getElementById('resetMsg');
+            const originalLabel = '<i class="fas fa-rotate"></i> Reset Session / Re-Pair';
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
+            msg.textContent = '';
+
+            let success = false;
+            try {
+                const res = await fetch('/api/reset-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    success = true;
+                    // Clear pairing code / phone field
+                    document.getElementById('pairingPhone').value = '';
+                    const codeDisplay = document.getElementById('pairingCodeDisplay');
+                    codeDisplay.textContent = '';
+                    codeDisplay.classList.remove('active');
+                    document.getElementById('pairingMsg').textContent = '';
+
+                    // Show generating state in QR area
+                    document.getElementById('qrContainer').innerHTML = `
+                        <div class="no-qr">
+                            <i class="fas fa-spinner fa-spin" style="font-size: 48px;"></i>
+                            <span>Generating new QR code...</span>
+                        </div>
+                    `;
+                    msg.style.color = '#25d366';
+                    msg.textContent = 'Session reset ho gaya. Naya QR ban raha hai...';
+
+                    setTimeout(() => {
+                        checkStatus();
+                        btn.disabled = false;
+                        btn.innerHTML = originalLabel;
+                    }, 2500);
+                } else {
+                    msg.style.color = '#ff4d4d';
+                    msg.textContent = data.error || 'Reset failed.';
+                }
+            } catch (e) {
+                msg.style.color = '#ff4d4d';
+                msg.textContent = 'Error: reset request fail ho gayi.';
+            }
+
+            if (!success) {
+                btn.disabled = false;
+                btn.innerHTML = originalLabel;
             }
         }
         

@@ -386,6 +386,80 @@ malik_app.post('/api/pairing-code', async (req, res) => {
     }
 });
 
+// Reset Session / Re-Pair API
+// Deletes ONLY the WhatsApp auth/session data (MongoDB) of the paired number and
+// restarts the session so the dashboard shows a fresh QR / pairing code.
+// Source/Target JIDs and all other dashboard config are NOT touched.
+let malik_resetInProgress = false;
+
+malik_app.post('/api/reset-session', async (req, res) => {
+    // Guard against double clicks / parallel resets
+    if (malik_resetInProgress) {
+        return res.status(429).json({ success: false, error: 'Reset already in progress. Please wait a few seconds.' });
+    }
+    malik_resetInProgress = true;
+
+    const sessionId = config.sessionId || 'malik_session';
+    try {
+        const session = sessions.get(sessionId);
+        const sock = session?.sock;
+
+        if (sock) {
+            // 1. Detach listeners so no auto-reconnect / creds save / message handling happens
+            try {
+                sock.ev.removeAllListeners('connection.update');
+                sock.ev.removeAllListeners('creds.update');
+                sock.ev.removeAllListeners('messages.upsert');
+            } catch (e) {
+                console.warn('[RESET] listener removal failed:', e.message);
+            }
+
+            // 2. Logout from WhatsApp if connected (5 second timeout), then close the socket
+            if (session.isConnected) {
+                let logoutTimer;
+                try {
+                    await Promise.race([
+                        sock.logout(),
+                        new Promise((_, reject) => {
+                            logoutTimer = setTimeout(() => reject(new Error('logout timeout (5s)')), 5000);
+                        })
+                    ]);
+                } catch (e) {
+                    console.warn('[RESET] logout failed/timed out:', e.message);
+                } finally {
+                    clearTimeout(logoutTimer);
+                }
+            }
+            try {
+                sock.end(undefined);
+            } catch (e) {
+                console.warn('[RESET] sock.end failed:', e.message);
+            }
+        }
+
+        // 3. Remove the session from memory
+        sessions.delete(sessionId);
+
+        // 4. Delete session (auth) data from MongoDB. Short pause first so any
+        //    in-flight key writes from the old socket cannot recreate stale data.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await malik_clearSession(sessionId);
+        console.log(`♻️ [RESET] Session data cleared for ${sessionId}`);
+
+        // 5. Respond, then start a fresh session after 1.5s so a new QR is generated
+        res.json({ success: true });
+        setTimeout(() => {
+            startSession(sessionId)
+                .catch((err) => console.error('[RESET] restart failed:', err.message))
+                .finally(() => { malik_resetInProgress = false; });
+        }, 1500);
+    } catch (e) {
+        malik_resetInProgress = false;
+        console.error('POST /api/reset-session Error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // -----------------------------------------------------------------------------
 // SESSION MANAGEMENT
 // -----------------------------------------------------------------------------
