@@ -42,6 +42,9 @@ const TZ_OPTS = { timezone: 'Asia/Karachi' };
 // These editions are published after the 5:00 AM delivery slot. They must
 // remain pending until their actual publication window instead of falling
 // back to yesterday's latest issue.
+// NOTE: keep these times in sync with `available_after` in scripts/epaper_registry.py
+// (the python side enforces the same gate). pakobserver used to be '10:20' here
+// while the registry said '08:00', so retries were silently skipped until 10:20.
 const EPAPER_AVAILABLE_AFTER = {
     mashriq: '08:00',
     mashriqakhbar: '10:00',
@@ -52,7 +55,7 @@ const EPAPER_AVAILABLE_AFTER = {
     dailyausaf: '11:30',
     dailypakistanlate: '11:00',
     thenation: '08:00',
-    pakobserver: '10:20',
+    pakobserver: '08:00',
     khabrain: '08:00',
     kawish: '15:00',
     pakistantoday: '08:00',
@@ -62,9 +65,8 @@ const EPAPER_AVAILABLE_AFTER = {
 
 const EPAPER_TIMING_TEXT = [
     '5:00 AM: jo early papers available hon',
-    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Pakistan Today, The Patriot, Nai Baat, Nawaiwaqt, The Nation, Jasarat, Khabrain',
+    '8:00 AM ke baad: Mashriq, Islamk, Aaj, Pakistan Today, The Patriot, Nai Baat, Nawaiwaqt, The Nation, Pakistan Observer, Jasarat, Khabrain',
     '10:00 AM ke baad: Mashriq Akhbar',
-    '10:20 AM ke baad: Pakistan Observer',
     '11:30 AM ke baad: Daily Ausaf',
     '3:00 PM ke baad: Kawish',
     '11:00 AM ke baad: Daily Pakistan (new editions)'
