@@ -23,17 +23,25 @@ SITE PATTERN (scrape se maloom hua):
 4) Agar kisi page ki image na milay to sirf wo page skip hota hai,
    baqi pages se PDF phir bhi ban jaati hai.
 
+5) (NEW) Site jab tak aaj ki edition upload nahi karti, pages.php purani
+   (kal ki) edition dikhata rehta hai. Ab script pehle edition ki date
+   check karti hai: agar wo aaj (PKT) ki nahi hai to koi page download
+   NAHI hota aur edition "abhi available nahi" ke taur par skip hoti hai
+   (taake retry har 15 min mein bina memory/bandwidth zaya kiye chale).
+   Purani edition manually chahiye to --allow-old use karein.
+
 Requirements:
-    pip install requests pillow
+    pip install requests pillow img2pdf
 
 Usage:
-    python pakobserver_epaper_downloader.py
-    python pakobserver_epaper_downloader.py --editions Lahore Karachi
-    python pakobserver_epaper_downloader.py --outdir "C:/PakObserverPDFs"
-    python pakobserver_epaper_downloader.py --keep-images
+    python pakobserver.py
+    python pakobserver.py --editions Lahore Karachi
+    python pakobserver.py --outdir "C:/PakObserverPDFs"
+    python pakobserver.py --keep-images
+    python pakobserver.py --allow-old      # aaj ki na ho to latest edition hi utha le
 
 Debug (agar koi city fail ho):
-    python pakobserver_epaper_downloader.py --debug-dump 2:45037:2026-07-03
+    python pakobserver.py --debug-dump 2:45037:2026-07-03
     (2=station_id, 45037=page_id, 2026-07-03=date -- teeno error log se
     lein). Ye "pakobserver_debug_page.html" bana degi jo dekh kar
     regex fix kiya ja sakta hai.
@@ -41,10 +49,10 @@ Debug (agar koi city fail ho):
 Automatic daily run:
 -----------------------------------------------------------------
   Windows (Task Scheduler): Daily trigger, program "python", arguments
-  "C:\\path\\pakobserver_epaper_downloader.py"
+  "C:\\path\\pakobserver.py"
 
   Linux/Mac (cron) -- roz subah 8:00 baje:
-    0 8 * * * /usr/bin/python3 /path/pakobserver_epaper_downloader.py
+    0 8 * * * /usr/bin/python3 /path/pakobserver.py
 """
 
 import argparse
@@ -107,8 +115,10 @@ PKT = timezone(timedelta(hours=5))  # Pakistan Standard Time
 
 # Confirmed pattern:
 #   https://epaper.pakobserver.net/issues/YYYY/YYYY-MM-DD/<digits>-full.jpg
+# (extension / optional sub-folder thori flexible rakhi hai taake site ki
+#  chhoti si tabdeeli par script na tootay)
 FULL_IMG_RE = re.compile(
-    r'(?:https?://epaper\.pakobserver\.net)?/?issues/\d{4}/\d{4}-\d{2}-\d{2}/\d+-full\.jpg',
+    r'(?:https?://epaper\.pakobserver\.net)?/?issues/\d{4}/\d{4}-\d{2}-\d{2}/(?:\d+/)?\d+-full\.(?:jpe?g|png|webp)',
     re.IGNORECASE,
 )
 PAGE_ID_LINK_RE = re.compile(
@@ -175,9 +185,11 @@ def http_get(session, url, extra_headers=None):
 
 def get_page_list(session, station_id):
     """
-    Station ki base URL se aaj ke saare (page_number, page_id, date)
-    nikaalta hai. Returns ordered list of (page_id, date) tuples, ya
-    None agar list na milay.
+    Station ki base URL se SAB SE NAYI edition ke saare (page_id, date)
+    nikaalta hai. Agar page par mukhtalif dates ke links hon (archive /
+    purani editions), to sirf sab se nayi date wale pages rakhe jate hain,
+    taake PDF ka naam/date galat na ho. Returns ordered list of
+    (page_id, date) tuples, ya None agar list na milay.
     """
     url = f"{BASE}/pages.php?station_id={station_id}"
     r = http_get(session, url)
@@ -192,6 +204,11 @@ def get_page_list(session, station_id):
             seen.add(pid)
             pages.append((int(pid), date))
 
+    if not pages:
+        return None
+
+    latest = max(date for _, date in pages)
+    pages = [(pid, date) for pid, date in pages if date == latest]
     return pages or None
 
 
@@ -254,7 +271,7 @@ def download_and_verify_image(session, url):
     return None
 
 
-def process_edition(edition_name, station_id, outdir, keep_images):
+def process_edition(edition_name, station_id, outdir, keep_images, allow_old=False):
     log(f"==> {edition_name} (station_id={station_id}): page list nikaali ja rahi hai...")
     session = make_session()
 
@@ -265,7 +282,14 @@ def process_edition(edition_name, station_id, outdir, keep_images):
             f"--debug-dump {station_id}:<page_id>:<date> chala kar dekhein.")
         return None
 
-    log(f"==> {edition_name}: {len(pages)} pages mile ({pages[0][1]}).")
+    issue_date = pages[0][1]
+    today = today_pkt_str()
+    if issue_date != today and not allow_old:
+        log(f"==> {edition_name}: site par abhi aaj ({today}) ki edition upload nahi hui "
+            f"(latest = {issue_date}). Koi page download nahi kiya -- baad mein dobara try hoga.")
+        return None
+
+    log(f"==> {edition_name}: {len(pages)} pages mile ({issue_date}).")
 
     def worker(idx_page):
         idx, (pid, date) = idx_page
@@ -357,6 +381,11 @@ def main():
         help="Har page ki alag JPG bhi rakhein (_raw folder mein).",
     )
     parser.add_argument(
+        "--allow-old",
+        action="store_true",
+        help="Agar aaj ki edition abhi upload nahi hui to site ki latest (purani) edition bhi download kar lein.",
+    )
+    parser.add_argument(
         "--debug-dump",
         metavar="STATION_ID:PAGE_ID:DATE",
         default=None,
@@ -398,7 +427,7 @@ def main():
     for name in chosen:
         station_id = EDITIONS[name]
         try:
-            path = process_edition(name, station_id, args.outdir, args.keep_images)
+            path = process_edition(name, station_id, args.outdir, args.keep_images, args.allow_old)
             results[name] = path
         except Exception as e:
             log(f"==> {name}: UNEXPECTED ERROR -> {e}")
