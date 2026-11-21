@@ -30,6 +30,11 @@ Use:       python clean_action_pdf.py
 Options:   --extra "WORD"      aur koi lafz/number blacklist me daalo (kai baar de sakte ho)
            --keep-ad-pages     kale ad/rules pages drop na karo
            --debug             har cheez ki detail print karo
+
+pypdf 6/7 compatibility: har page pehle PdfWriter se attach hota hai
+(writer.add_page) aur phir edit hota hai, kyunke pypdf 7.0 mein
+PageObject.replace_contents() un pages par kaam nahi karta jo kisi
+writer se attached na hon.
 """
 
 import argparse
@@ -325,7 +330,8 @@ def write_stream(obj, data):
 
 
 def scrub_form(reader, form, matcher, stats, seen, depth=0):
-    """Form XObject (aur uske andar ke forms) ko recursively scan karo."""
+    """Form XObject (aur uske andar ke forms) ko recursively scan karo.
+    `reader` yahan asal mein woh PDF object hai (writer) jis se page attached hai."""
     form = form.get_object()
     ident = id(form)
     if ident in seen or depth > 6:
@@ -388,7 +394,12 @@ def main_form_name(xobjs):
 
 
 def clean_page(reader, page, matcher, stats):
-    """Return 'ok' | 'image-only' for the page (page is edited in place)."""
+    """Return 'ok' | 'image-only' for the page (page is edited in place).
+
+    IMPORTANT (pypdf >= 7): `page` MUST already be attached to a PdfWriter
+    (i.e. the object returned by writer.add_page(...)), and `reader` should be
+    that same writer -- replace_contents() raises DeprecationError otherwise.
+    """
     mb = page.mediabox
     px0, py0, px1, py1 = float(mb.left), float(mb.bottom), float(mb.right), float(mb.top)
     W, H = px1 - px0, py1 - py0
@@ -537,12 +548,14 @@ def main():
 
     for i, page in enumerate(reader.pages, 1):
         stats = {"text_removed": 0, "strips_removed": 0, "annots_removed": 0}
-        kind = clean_page(reader, page, matcher, stats)
+        # pypdf 7: page ko PEHLE writer se attach karo, phir usi attached page ko
+        # edit karo (warna replace_contents DeprecationError deta hai).
+        wpage = writer.add_page(page)
+        kind = clean_page(writer, wpage, matcher, stats)
         for k in totals:
             totals[k] += stats[k]
         if kind == "image-only":
             image_only_pages.append(i)
-        writer.add_page(page)
         kept += 1
         msg = (f"text objects removed: {stats['text_removed']}, "
                f"strips removed: {stats['strips_removed']}")
@@ -566,7 +579,10 @@ def main():
         print(f"CLEAN_SOCIAL_MEDIA_RESULT:{json.dumps(result)}", flush=True)
         return 4
     writer.add_metadata({"/Title": args.output.rsplit(".", 1)[0]})
-    writer.compress_identical_objects(remove_identicals=True, remove_orphans=True)
+    try:
+        writer.compress_identical_objects(remove_identicals=True, remove_orphans=True)
+    except Exception as e:  # noqa -- optional size optimisation, newer pypdf may change its signature
+        dbg("compress_identical_objects skipped:", e)
     with open(args.output, "wb") as f:
         writer.write(f)
     remaining = Matcher(args.extra)
